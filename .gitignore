@@ -1,0 +1,12 @@
+archive cyber project/
+project logging and book/
+teacherproject/
+
+*db
+*db-shm
+*db-wal
+
+Cyber Project/audio_recordings_wav_noam*/
+Cyber Project/audio_recordings_wav/
+
+Cyber Project/__pycache__/*
