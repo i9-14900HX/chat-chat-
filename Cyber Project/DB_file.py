@@ -157,7 +157,14 @@ class DB_Class_General:
         self.c.execute("SELECT COUNT(*) FROM groups")
         count = self.c.fetchone()[0]
         return count
+    
+    def Give_Add_Group_Message_To_Added(self, group_id, group_name):
+        
+        usernames_str = self.Get_Group_Members(group_id, method = "str")
 
+        log_answer = f"you have been added to {group_name} |crt.{group_id}.{usernames_str}.{group_name}"
+
+        return log_answer
     def Print_Group(self):
 
         self.c.execute("SELECT * FROM groups")
@@ -168,6 +175,9 @@ class DB_Class_General:
         with self.write_lock:
             self.c.execute("INSERT INTO users VALUES (?,?,?,?,?,?)",(msg_id, username_str, group_id, header, messagge, "placeholder - who not sent to "))
             self.conn.commit()  
+
+    
+
 
     #def Delete_Message(self, msg_id, username)
         
@@ -285,7 +295,6 @@ class DB_Class_Specific():
 
         return self.c.fetchone() is not None
 
-    
 
     def Print_Group(self):
 

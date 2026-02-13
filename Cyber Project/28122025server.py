@@ -291,6 +291,7 @@ class Server:
 
                                 log_answer_AES = self.client_dic[user][1].aes_encrypt(log_answer_bytes)
 
+
                                 msg_AES = header_AES_for_client + log_answer_AES
 
                                 self.client_dic[user][0].put(msg_AES)
@@ -305,12 +306,53 @@ class Server:
                     data_bytes = cipher.aes_decrypt(data_AES)
                     data_str = data_bytes.decode()
 
-                    target_group_id, target_username = data_str.split("|")
+                    target_group_id, target_username, group_name_for_added_user = data_str.split("|")
                     with self.add_group_lock:
                         did_work, log_answer = DB_object.Add_To_Group(target_group_id, target_username)
+                    
+                    log_answer += f" |add.{target_group_id}.{target_username}"
+                    log_answer_bytes = log_answer.encode()
+                    log_answer_AES = cipher.aes_encrypt(log_answer_bytes)
+                    log_answer_len = len(log_answer_AES)
+
+                    header = Pack_Header("ans", msg_id, chunk_idx, total_chunks, log_answer_len, username_str, group_id)
+                    header_AES = cipher.aes_encrypt(header)
+
+                    print(log_answer)
+
+                    if not did_work:
+                        msg_AES = header_AES + log_answer_AES
+                        self.client_dic[username_str][0].put(msg_AES)
+
+                    else:
+                        for user in DB_object.Get_Group_Members(target_group_id, method = "list"):
+
+                            if user not in self.client_dic:
+                                print (f"{user} is not online")
+
+                            elif user == target_username:
+                                log_answer_tu = DB_object.Give_Add_Group_Message_To_Added(target_group_id, group_name_for_added_user)
+                                log_answer_bytes_tu = log_answer_tu.encode()
+                                log_answer_AES_tu = self.client_dic[user][1].aes_encrypt(log_answer_bytes_tu)
+                                log_answer_len_tu = len(log_answer_AES_tu)
+
+                                header_tu = Pack_Header("ans", msg_id, chunk_idx, total_chunks, log_answer_len_tu, username_str, group_id)
+                                header_AES_tu = self.client_dic[user][1].aes_encrypt(header_tu)
+
+                                msg_AES_tu = header_AES_tu + log_answer_AES_tu
+
+                                self.client_dic[user][0].put(msg_AES_tu)
+
+                            else:
+                                log_answer_AES = self.client_dic[user][1].aes_encrypt(log_answer_bytes)
+
+                                header_AES = self.client_dic[user][1].aes_encrypt(header)
+                                
+                                msg_AES = header_AES + log_answer_AES
+
+                                self.client_dic[user][0].put(msg_AES)
 
                     #if not did_work:
-                    print(log_answer)
                     #rememeber to add group_name to message to added client    
                 elif msg_type_str == "ack":
                     ack_evnt.set()

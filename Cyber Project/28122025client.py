@@ -18,6 +18,7 @@ class My_Error(Exception):
 class Client:
     def __init__(self):
         self.socket_lock = threading.Lock()
+        self.not_duplicate_group = threading.Lock()
         self.audio_data_dic = {}
         data_str = ''
         self.message_queue = Queue()
@@ -327,6 +328,7 @@ class Client:
 
             user_list = users.split(' ')
 
+            group_name = group_name.strip()
             message = group_name + ','
 
             if len(user_list) != len(set(user_list)):
@@ -371,7 +373,7 @@ class Client:
                 
                 return "no", f"{username} already in {target_group}"
             
-            msg = str(target_group_id) + "|" + target_user
+            msg = str(target_group_id) + "|" + target_user + "|" + self.DB_object_client_recvr.Get_Group_Name_From_Id(target_group_id)
             msg_bytes = msg.encode()
             msg_AES = self.cipher.aes_encrypt(msg_bytes)
 
@@ -393,9 +395,32 @@ class Client:
     def Create_Group_Internal_Client(self, command):
 
         print(f"create group command: {command}")
-        _ , group_id , usernames , group_name = command.split(".")
+        _ , group_id , usernames , group_name = command.split(".", 3)
+
+        origin_group_name = group_name
+        group_unique_name_progressive_index = 1
+        group_exist = True
+        with self.not_duplicate_group:
+            if self.DB_object_server_recvr.Is_Group_Exist(group_name):
+                while group_exist:
+                    group_name_new = group_name + f" ({group_unique_name_progressive_index})"  
+                    if not self.DB_object_server_recvr.Is_Group_Exist(group_name_new):
+                        group_name = group_name_new
+                        group_exist = False
+                    else:
+                        group_unique_name_progressive_index += 1
+                print(f"{origin_group_name} name taken, new name: {group_name}")
+            
         self.DB_object_server_recvr.Create_Group(group_id, usernames, group_name)
-    
+
+    def Add_To_Group_Internal_Client(self, do):
+
+        _ , target_group_id, target_username = do.split(".")
+
+        self.DB_object_server_recvr.Add_To_Group(target_group_id, target_username)
+
+        print("client_added_succesfully in client")
+        
     def Handle_Server_Ans(self, do):
 
         if not do:
@@ -406,7 +431,8 @@ class Client:
         match method:
             case "crt":
                 self.Create_Group_Internal_Client(do)       
-
+            case "add":
+                self.Add_To_Group_Internal_Client(do)
             case _:
                 print(f"method {method} is not in the system")
 
