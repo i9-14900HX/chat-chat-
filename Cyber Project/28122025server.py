@@ -34,7 +34,7 @@ class Server:
         self.client_dic_lock = threading.Lock()
         self.group_id_counter_lock = threading.Lock()
         self.add_group_lock = threading.Lock()
-        
+        self.remve_group_lock = threading.Lock()
         while True:
             client_socket,address=server.accept()
             #client_socket.settimeout(10)
@@ -282,7 +282,7 @@ class Server:
                         
                     else:
                         for user in DB_object.Get_Group_Members(group_id_current, method = "list"):
-
+                            
                             if user not in self.client_dic:
                                 print(f"{user} is not online")
                             
@@ -342,6 +342,60 @@ class Server:
                                 msg_AES_tu = header_AES_tu + log_answer_AES_tu
 
                                 self.client_dic[user][0].put(msg_AES_tu)
+
+                            else:
+                                log_answer_AES = self.client_dic[user][1].aes_encrypt(log_answer_bytes)
+
+                                header_AES = self.client_dic[user][1].aes_encrypt(header)
+                                
+                                msg_AES = header_AES + log_answer_AES
+
+                                self.client_dic[user][0].put(msg_AES)
+
+                elif msg_type_str == "rmv":
+                    data_AES = self.recv_exact(client_socket, payload_len)
+                    data_bytes = cipher.aes_decrypt(data_AES)
+                    data_str = data_bytes.decode()
+
+                    target_group_id, target_username, group_name_for_removed_user = data_str.split("|")
+                    with self.remve_group_lock:
+                        did_work, log_answer = DB_object.Remove_From_Group(target_group_id, target_username)
+                    
+                    log_answer += f" |rmv.{target_group_id}.{target_username}"
+                    log_answer_bytes = log_answer.encode()
+                    log_answer_AES = cipher.aes_encrypt(log_answer_bytes)
+                    log_answer_len = len(log_answer_AES)
+
+                    header = Pack_Header("ans", msg_id, chunk_idx, total_chunks, log_answer_len, username_str, group_id)
+                    header_AES = cipher.aes_encrypt(header)
+
+                    print(log_answer)
+
+                    if not did_work:
+                        msg_AES = header_AES + log_answer_AES
+                        self.client_dic[username_str][0].put(msg_AES)
+
+                    else:
+                        if target_username in self.client_dic:
+                            log_answer_tu = DB_object.Give_Remove_Group_Message_To_Removed(target_group_id, group_name_for_removed_user)
+                            log_answer_bytes_tu = log_answer_tu.encode()
+                            log_answer_AES_tu = self.client_dic[target_username][1].aes_encrypt(log_answer_bytes_tu)
+                            log_answer_len_tu = len(log_answer_AES_tu)
+
+                            header_tu = Pack_Header("ans", msg_id, chunk_idx, total_chunks, log_answer_len_tu, username_str, group_id)
+                            header_AES_tu = self.client_dic[target_username][1].aes_encrypt(header_tu)
+
+                            msg_AES_tu = header_AES_tu + log_answer_AES_tu
+
+                            self.client_dic[target_username][0].put(msg_AES_tu)
+                        else:
+                            print(f"{target_username} is not online")
+
+
+                        for user in DB_object.Get_Group_Members(target_group_id, method = "list"):
+
+                            if user not in self.client_dic:
+                                print (f"{user} is not online")
 
                             else:
                                 log_answer_AES = self.client_dic[user][1].aes_encrypt(log_answer_bytes)

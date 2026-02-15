@@ -17,7 +17,7 @@ SIN = 6
 SUP = 7 
 CRT = 8
 ADD = 9
-
+RMV = 10
 
 #protocol
 CHUNK_MAX_SIZE = 1027

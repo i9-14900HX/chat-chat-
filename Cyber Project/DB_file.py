@@ -127,12 +127,21 @@ class DB_Class_General:
 
         usernames_new = ""
         usernames_list = self.Get_Group_Members(group_id, method = "list")
+
+        if not self.username_exist(target_username):
+            return False, f"{target_username} does not exist"
+
+        if target_username not in usernames_list:
+            return False, f"{target_username} in not in {group_id}"
+        
         usernames_new = "|".join(u for u in usernames_list if u != target_username) + "|"
 
         with self.write_lock:
             self.c.execute("UPDATE groups SET usernames_str = ? WHERE group_id = ?",  (usernames_new, group_id))
             self.conn.commit()  
-    
+
+        return True, f"{target_username} succesfully removed from {group_id}"
+
     def Add_To_Group(self, group_id, target_username):
         
         usernames_list = self.Get_Group_Members(group_id, method = "list")
@@ -165,6 +174,13 @@ class DB_Class_General:
         log_answer = f"you have been added to {group_name} |crt.{group_id}.{usernames_str}.{group_name}"
 
         return log_answer
+    
+    def Give_Remove_Group_Message_To_Removed(self, group_id, group_name):
+
+        log_answer = f"you have been removed from {group_name} |rmv.{group_id}"
+
+        return log_answer
+    
     def Print_Group(self):
 
         self.c.execute("SELECT * FROM groups")

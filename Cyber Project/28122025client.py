@@ -178,6 +178,18 @@ class Client:
                     continue
 
                 self.Send_Server_simple(msg_AES)
+            elif input_in_string.split("|")[0] == "RMV":
+                if self.in_group == self.default_group:
+                    print("cannot remove from broadcast")
+                    continue
+                else:
+                    status, msg_AES = self.Remove_From_Group_Send_Server_Msg(input_in_string, self.in_group)
+                    if status != None:
+                        print(msg_AES)
+                        continue 
+                    else:
+                        print("remove message sent to server")
+                        self.Send_Server_simple(msg_AES)  
             else:
                 msg_AES = self.Client_string_message(input_in_string, self.in_group)
                 self.Send_Server_simple(msg_AES)
@@ -364,7 +376,7 @@ class Client:
     
     def Add_To_Group_Send_Server_Msg(self, message_raw: str, target_group):
             
-            _ , username = message_raw.split('|')
+            _ , username = message_raw.split('|', 1)
             #target_group_id = self.DB_object_client_recvr.Get_Group_Id_From_Name(target_group)
             target_group_id = target_group
             target_user = username.strip()
@@ -392,6 +404,34 @@ class Client:
 
             return None, header_msg_AES
     
+    def Remove_From_Group_Send_Server_Msg(self, message_raw: str, target_group):
+            _ , username = message_raw.split('|', 1)
+            #target_group_id = self.DB_object_client_recvr.Get_Group_Id_From_Name(target_group)
+            target_group_id = target_group
+            target_user = username.strip()
+
+            if target_user not in self.DB_object_client_recvr.Get_Group_Members(target_group_id, method = "list"):
+                
+                return "no", f"{username} is not in {target_group}"
+            
+            msg = str(target_group_id) + "|" + target_user + "|" + self.DB_object_client_recvr.Get_Group_Name_From_Id(target_group_id)
+            msg_bytes = msg.encode()
+            msg_AES = self.cipher.aes_encrypt(msg_bytes)
+
+            msg_type_str = "rmv"
+            msg_id = Generate_msg_id()
+            chunk_idx = 0
+            total_chunks = 0
+
+            msg_len = len(msg_AES)
+            
+            header = Pack_Header(msg_type_str, msg_id, chunk_idx, total_chunks, msg_len, self.username, self.default_group)
+
+            header_AES = self.cipher.aes_encrypt(header)
+
+            header_msg_AES = header_AES + msg_AES
+
+            return None, header_msg_AES
     def Create_Group_Internal_Client(self, command):
 
         print(f"create group command: {command}")
@@ -420,7 +460,21 @@ class Client:
         self.DB_object_server_recvr.Add_To_Group(target_group_id, target_username)
 
         print("client_added_succesfully in client")
+    
+    def Remove_From_Group_Internal_Client(self, do):
         
+        do_instructions = do.split(".")
+
+        if len(do_instructions) == 2:
+            _ , target_group_id = do_instructions
+            target_username = self.username
+        else:
+            _ , target_group_id, target_username = do_instructions
+
+        self.DB_object_server_recvr.Remove_From_Group(target_group_id, target_username)
+
+        print("client_removed_succesfully in client")
+    
     def Handle_Server_Ans(self, do):
 
         if not do:
@@ -433,6 +487,8 @@ class Client:
                 self.Create_Group_Internal_Client(do)       
             case "add":
                 self.Add_To_Group_Internal_Client(do)
+            case "rmv":
+                self.Remove_From_Group_Internal_Client(do)
             case _:
                 print(f"method {method} is not in the system")
 

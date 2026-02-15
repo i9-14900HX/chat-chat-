@@ -24,6 +24,8 @@ def Pack_Header(msg_type_str, msg_id, chunk_idx, total_chunks, payload_len, user
             msg_type = CRT
         case "add":
             msg_type = ADD
+        case "rmv":
+            msg_type = RMV
         case _:
             print("ERROR LINE 14 HEADER_MANAGER MODULE")
     print(f"packing: {msg_type_str}")
@@ -71,6 +73,8 @@ def UnPack_Header(header):
             msg_type_str = "crt"
         case 9:
             msg_type_str = "add"
+        case 10:
+            msg_type_str = "rmv"
         case _:
             print(f"ERROR LINE 45 HEADER_MANAGER MODULE: {msg_type}")
 
