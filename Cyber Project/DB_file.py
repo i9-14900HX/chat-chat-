@@ -5,7 +5,11 @@ import numpy as np
 import soundfile as sf
 import threading
 
+
+#לא לשגכוח להעביר את הlock למשתנה מחלקתי לפני ה innit
+
 class DB_Class_General:
+    
     def __init__(self):
         #השגת תיקייה מריצה
         self.file_path = Path(__file__).resolve()
@@ -225,6 +229,8 @@ class DB_Class_Specific():
         self.c.execute('''CREATE TABLE IF NOT EXISTS groups (group_id integer, usernames_str text, group_name text)''')
         self.conn.commit()
 
+        self.c.execute('''CREATE TABLE IF NOT EXISTS messages (type text ,msg_id text, username_str text, group_id integer, message text)''')
+        self.conn.commit()
         #self.c.execute('''CREATE TABLE IF NOT EXISTS (username text, password text, salt text)''')
         #self.conn.commit()
 
@@ -266,6 +272,7 @@ class DB_Class_Specific():
     
     def Remove_From_Group(self, group_id, target_username):
 
+        #לזכור להוסיף בדיקה אם המשתמש שרוצים להוריד זה המשתמש עצמו, ואז למחוק את הקבוצה כולה, כי הוא לא יכול להיות בקבוצה שהוא לא שייך אליה
         usernames_new = ""
         usernames_list = self.Get_Group_Members(group_id, method = "list")
         usernames_new = "|".join(u for u in usernames_list if u != target_username) + "|"
@@ -311,8 +318,27 @@ class DB_Class_Specific():
 
         return self.c.fetchone() is not None
 
-
     def Print_Group(self):
 
         self.c.execute("SELECT * FROM groups")
         print(self.c.fetchall())
+
+    def Save_Message(self, msg_type, msg_id, username_str, group_id, messagge):
+
+        if msg_type == "wav":
+            bytes_array = messagge
+            self.Save_audio_bytes_in_dir(bytes_array, msg_id)
+            filename = self.audio_dir / f"recording{msg_id}.wav"
+            messagge = str(filename)
+            print (f"message is wav, saved in {filename} and path is {self.audio_dir_str}")
+        print(f"message is str")
+        with self.write_lock:
+            self.c.execute("INSERT INTO messages VALUES (?,?,?,?,?)",(msg_type, msg_id, username_str, group_id, messagge))
+            self.conn.commit()
+        print("messagge saved")
+        
+    def Get_Message_by_group(self, group_id):
+        
+        self.c.execute("SELECT * FROM messages WHERE group_id = ?", (group_id,))
+        return self.c.fetchall()
+    

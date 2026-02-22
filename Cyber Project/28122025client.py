@@ -10,7 +10,7 @@ import math
 from queue import Queue
 import DB_file
 from tqdm import tqdm
- 
+from audio_player import *
 # from audio_recorder import Recorder
 class My_Error(Exception):
     #לעבוד על custom exceptions, לראות raise | except | try | finally | as e . נראה מגניב ביותר  
@@ -136,9 +136,18 @@ class Client:
 
     def recv_data_from_client(self): 
         self.DB_object_client_recvr = DB_file.DB_Class_Specific(self.username)
+        self.player_object = Audio_player()
         while self.connected:
             input_in_string = input("send a message\n")
-            if input_in_string.split("|")[0] == "ADD":
+
+            if input_in_string.split("|")[0] == "stop":
+                self.player_object.stop()
+            elif input_in_string.split("|")[0] == "play":
+                self.player_object.Play_Audio_By_File_thread = threading.Thread(target = self.player_object.Play_Audio_By_File, args=(input_in_string.split("|")[1],))
+                self.player_object.Play_Audio_By_File_thread.start()
+            elif input_in_string == "":
+                continue
+            elif input_in_string.split("|")[0] == "ADD":
                 if self.in_group == self.default_group:
                     print("cannot add to broadcast")
                     continue
@@ -154,15 +163,25 @@ class Client:
                 want_group = self.DB_object_client_recvr.Get_Group_Id_From_Name(input_in_string.split(":")[1]) 
                 if want_group == None:
                     print(f"no group: {input_in_string.split(":")[1]}, you are now in broadcast")
-                    self.in_group == self.default_group
+                    self.in_group = self.default_group #לא יודע מה זה למה זה == ולא = 
                     continue
                 else:
                     print(f"you are now in group: {input_in_string.split(":")[1]}")
                     self.in_group = want_group
+                group_messages = self.DB_object_client_recvr.Get_Message_by_group(self.in_group)
+                if not group_messages:
+                    print("no messages in this group yet")
+                    continue
+                for msg in group_messages:
+                    msg_type, msg_id, username_str, group_id, data = msg
+                    if msg_type == "str":
+                        print(f"{self.format_msg_id(msg_id)} {username_str} sent: {data}, group: {group_id} ,supposed to be from client\n")
+                    elif msg_type == "wav":
+                        print(f"{self.format_msg_id(msg_id)} {username_str} sent a voice message, group: {group_id} ,supposed to be from client\n")
                 continue
             elif input_in_string == "<activate_voice_stream>":
                 voice_recording_bytes = self.Get_Voice_Recording()
-                self.Send_Server_recording(voice_recording_bytes, self.in_group)
+                self.send_server_recording(voice_recording_bytes, self.in_group)
             elif input_in_string.split("|")[0] == "CRT":
                 msg_AES = self.Create_Group_Send_Server_Msg(input_in_string)
                 if msg_AES == "duplicate usernames":
@@ -223,6 +242,7 @@ class Client:
                 data_AES = self.recv_exact(payload_len)
                 data_bytes = self.cipher.aes_decrypt(data_AES)
                 data_str = data_bytes.decode()
+                self.DB_object_server_recvr.Save_Message(msg_type_str, msg_id, username_str, group_id, data_str)
                 print(f"{self.format_msg_id(msg_id)} {username_str} sent: {data_str}, group: {group_id} ,supposed to be from client\n")
             elif msg_type_str == "wav":
                 chunk_data_AES = self.recv_exact(payload_len)
@@ -237,8 +257,9 @@ class Client:
                 if self.audio_data_dic[msg_id]["chunks_received"] == self.audio_data_dic[msg_id]["total_chunks"]:
 
                     data_bytes = self.audio_data_dic[msg_id]["vc_data"]
-                    self.DB_object_server_recvr.Save_audio_bytes_in_dir(data_bytes, msg_id)
-                    
+                    #self.DB_object_server_recvr.Save_audio_bytes_in_dir(data_bytes, msg_id)
+                    self.DB_object_server_recvr.Save_Message(msg_type_str, msg_id, username_str, group_id, data_bytes)
+
             elif msg_type_str == "ans":
                 data_AES = self.recv_exact(payload_len)
                 data_bytes = self.cipher.aes_decrypt(data_AES)
@@ -311,7 +332,7 @@ class Client:
         return header_plus_voice_message_chunk_AES    
     
     ''''''
-    def Send_Server_recording(self, voice_recording_bytes, group_id):
+    def send_server_recording(self, voice_recording_bytes, group_id):
         counter = 0 
         chunk_offset = 0
         bytes_sent = 0
