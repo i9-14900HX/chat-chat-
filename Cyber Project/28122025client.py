@@ -249,7 +249,11 @@ class Client:
                 chunk_data_bytes = self.cipher.aes_decrypt(chunk_data_AES)
 
                 if msg_id not in self.audio_data_dic:
-                    self.audio_data_dic[msg_id] = {"vc_data": [], "total_chunks": total_chunks, "chunks_received": 0}
+                    if chunk_idx != 1:
+                        print(f"Error: Received chunk {chunk_idx} for message ID {msg_id} before receiving the first chunk.")
+                        continue
+                    else:
+                        self.audio_data_dic[msg_id] = {"vc_data": [], "total_chunks": total_chunks, "chunks_received": 0}
  
                 self.audio_data_dic[msg_id]["vc_data"].append(chunk_data_bytes)
                 self.audio_data_dic[msg_id]["chunks_received"] += 1

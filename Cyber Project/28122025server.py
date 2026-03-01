@@ -16,8 +16,8 @@ class Server:
         self.file_path = Path(__file__).resolve()
         self.folder_path = self.file_path.parent
         self.audio_dir = self.folder_path / "audio_recordings_wav"
-        self.audio_dir.mkdir(parents=True, exist_ok=True)
         self.audio_dir_str = str(self.audio_dir)
+        self.audio_dir.mkdir(parents=True, exist_ok=True)
         self.username_password_salt_db = str(self.folder_path / "username_password_salt_db.db")
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.bind(('127.0.0.1', 6666))
@@ -163,7 +163,7 @@ class Server:
             self.client_dic[name] = (Queue(), cipher)
             sending_q_client_thread = threading.Thread(target = self.Send_Client_By_Q, args=(self.client_dic[name][0], client_socket, socket_lock, ack_evnt))
             sending_q_client_thread.start()
-        
+            
         while client_connected:
             try:
                 header_encrypted= self.recv_exact(client_socket, HEADER_SIZE)

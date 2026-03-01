@@ -31,7 +31,7 @@ class DB_Class_General:
         self.c.execute('''CREATE TABLE IF NOT EXISTS users (username text, password text,salt text)''')
         self.conn.commit()
         
-        self.c.execute('''CREATE TABLE IF NOT EXISTS messages (msg_id integer, username_str text ,group_id integer, header blob, content blob, users_nt_sent text)''')
+        self.c.execute('''CREATE TABLE IF NOT EXISTS messages (type text, msg_id text, username_str text ,group_id integer, header blob, content blob)''')
         self.conn.commit()
 
         self.c.execute('''CREATE TABLE IF NOT EXISTS groups (group_id integer, usernames_str text)''')
