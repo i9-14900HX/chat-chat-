@@ -31,12 +31,15 @@ class DB_Class_General:
         self.c.execute('''CREATE TABLE IF NOT EXISTS users (username text, password text,salt text)''')
         self.conn.commit()
         
-        self.c.execute('''CREATE TABLE IF NOT EXISTS messages (type text, msg_id text, username_str text ,group_id integer, header blob, content blob)''')
+        self.c.execute('''CREATE TABLE IF NOT EXISTS messages (type text , msg_id text PRIMARY KEY, username_str text ,group_id integer, header blob, content blob)''')
+        self.conn.commit()
+
+        self.c.execute('''CREATE TABLE IF NOT EXISTS connectmessages (msg_id text, username_str text, did_recv boolean)''')
         self.conn.commit()
 
         self.c.execute('''CREATE TABLE IF NOT EXISTS groups (group_id integer, usernames_str text)''')
         self.conn.commit()
-
+        
         self.write_lock = threading.Lock()
 
     def save_user_and_pass(self, username, password):
@@ -190,14 +193,63 @@ class DB_Class_General:
         self.c.execute("SELECT * FROM groups")
         print(self.c.fetchall())
 
-    def Save_Message(self, msg_id, username_str, group_id, header, messagge):
+    def Save_Message(self,msg_type, msg_id, username_str, group_id, header, messagge):
+
+        if msg_type == "wav":
+            bytes_array = messagge
+            self.Save_audio_bytes_in_dir(bytes_array, msg_id)
+            filename = self.audio_dir / f"recording{msg_id}.wav"
+            messagge = str(filename)
+            print (f"message is wav, saved in {filename} and path is {self.audio_dir_str}")
 
         with self.write_lock:
-            self.c.execute("INSERT INTO users VALUES (?,?,?,?,?,?)",(msg_id, username_str, group_id, header, messagge, "placeholder - who not sent to "))
-            self.conn.commit()  
+            self.c.execute("INSERT INTO messages VALUES (?,?,?,?,?,?)",(msg_type, msg_id, username_str, group_id, header, messagge))
+            self.conn.commit()
 
-    
+    def Get_Message_by_msg_id(self, msg_id):
 
+        self.c.execute("SELECT * FROM messages WHERE msg_id = ?", (msg_id,))
+        return self.c.fetchone()
+
+    def Add_User_To_connect_Messages(self, msg_id, username_str):
+
+        with self.write_lock:
+            self.c.execute("INSERT INTO connectmessages VALUES (?,?,?)",(msg_id, username_str, False))
+            self.conn.commit()
+
+    def Add_Users_To_connect_Messages_by_Group(self, msg_id, group_id):
+
+        usernames_list = self.Get_Group_Members(group_id, method = "list")
+
+        for username_str in usernames_list:
+            self.Add_User_To_connect_Messages(msg_id, username_str)
+
+    def Recv_Messages_Not_Sent_To_Client(self, username_str):
+
+        messages = []
+
+        self.c.execute("SELECT msg_id FROM connectmessages WHERE username_str = ? AND did_recv = ?" , (username_str, False))
+        rows = self.c.fetchall()
+        if not rows:
+            return messages
+        
+        msg_ids = [row[0] for row in rows]
+        
+        
+        #for msg_id in msg_ids:
+        #    messages.append(self.Get_Message_by_msg_id(msg_id))
+
+        placeholders = ','.join('?' for _ in msg_ids)
+        self.c.execute(f"SELECT * FROM messages WHERE msg_id IN ({placeholders}) ORDER BY msg_id ASC", msg_ids)
+        messages = self.c.fetchall()
+
+        return messages
+
+    def Update_Connect_Message_Status(self, msg_id, username_str):
+
+        with self.write_lock:
+            self.c.execute("UPDATE connectmessages SET did_recv = ? WHERE msg_id = ? AND username_str = ?",  (True, msg_id, username_str))
+            self.conn.commit()
 
     #def Delete_Message(self, msg_id, username)
         

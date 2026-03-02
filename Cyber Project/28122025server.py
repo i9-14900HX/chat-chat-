@@ -159,7 +159,16 @@ class Server:
                     #self.clients_list.append((client_socket, cipher))
 
 
-        if client_in:     #למקרה והexcpet לא מוציא את התרד         
+        if client_in:     #למקרה והexcpet לא מוציא את התרד 
+
+            '''
+            queue_for_client = Queue()
+            sending_q_client_thread = threading.Thread(target = self.Send_Client_By_Q, args=(queue_for_client, client_socket, socket_lock, ack_evnt))
+            sending_q_client_thread.start()
+            self.Handle_recconect()
+            self.client_dic[name] = (queue_for_client, cipher)
+            '''
+
             self.client_dic[name] = (Queue(), cipher)
             sending_q_client_thread = threading.Thread(target = self.Send_Client_By_Q, args=(self.client_dic[name][0], client_socket, socket_lock, ack_evnt))
             sending_q_client_thread.start()
@@ -331,12 +340,14 @@ class Server:
                                 print (f"{user} is not online")
 
                             elif user == target_username:
+
+                                msg_id_tu = Generate_msg_id()
                                 log_answer_tu = DB_object.Give_Add_Group_Message_To_Added(target_group_id, group_name_for_added_user)
                                 log_answer_bytes_tu = log_answer_tu.encode()
                                 log_answer_AES_tu = self.client_dic[user][1].aes_encrypt(log_answer_bytes_tu)
                                 log_answer_len_tu = len(log_answer_AES_tu)
 
-                                header_tu = Pack_Header("ans", msg_id, chunk_idx, total_chunks, log_answer_len_tu, username_str, group_id)
+                                header_tu = Pack_Header("ans", msg_id_tu, chunk_idx, total_chunks, log_answer_len_tu, username_str, group_id)
                                 header_AES_tu = self.client_dic[user][1].aes_encrypt(header_tu)
 
                                 msg_AES_tu = header_AES_tu + log_answer_AES_tu
@@ -412,7 +423,7 @@ class Server:
                     ack_evnt.set()
                     continue
 
-                ack_msg = Generate_ACK_msg(msg_id, username_str)
+                ack_msg = Generate_ACK_msg(msg_id, username_str, chunk_idx, total_chunks, group_id)
                 ack_msg_AES = cipher.aes_encrypt(ack_msg)
                 with socket_lock:
                     client_socket.send(ack_msg_AES)    

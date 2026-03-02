@@ -93,5 +93,5 @@ def Generate_msg_id():
     return msg_id
 
 @staticmethod
-def Generate_ACK_msg(msg_id, username):
-    return Pack_Header("ack", msg_id, 0, 0, 0, username, 0)
+def Generate_ACK_msg(msg_id, username, chunk_idx = 0, total_chunks = 0, group_id = 0):
+    return Pack_Header("ack", msg_id, chunk_idx, total_chunks, 0, username, group_id)
