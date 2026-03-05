@@ -276,7 +276,7 @@ class Client:
                 self.is_ack.set()
                 continue
 
-            ack_msg = Generate_ACK_msg(msg_id, username_str, chunk_idx, total_chunks, group_id)
+            ack_msg = Generate_ACK_msg(msg_id, self.username, chunk_idx, total_chunks, group_id)
             ack_msg_AES = self.cipher.aes_encrypt(ack_msg)
             with self.socket_lock:
                     self.client_socket.send(ack_msg_AES)

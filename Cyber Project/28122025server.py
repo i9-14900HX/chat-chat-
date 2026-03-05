@@ -1,3 +1,4 @@
+import math
 import socket
 from pathlib import Path
 import threading
@@ -27,14 +28,15 @@ class Server:
         self.broadcast_id = 0
         #self.clients_list = []
         self.client_dic = {}
+        self.temp_recconect_dic = {}
         self.place_holder_key = "place_holder_key"
         temporary_db_object = DB_file.DB_Class_General()
         self.group_id_counter = temporary_db_object.Get_Current_Group_Id()
         self.sup_lock = threading.Lock()
         self.client_dic_lock = threading.Lock()
+        self.temp_recconect_dic_lock = threading.Lock()
         self.group_id_counter_lock = threading.Lock()
-        self.add_group_lock = threading.Lock()
-        self.remve_group_lock = threading.Lock()
+        self.edit_group_lock = threading.Lock()
         while True:
             client_socket,address=server.accept()
             #client_socket.settimeout(10)
@@ -83,6 +85,7 @@ class Server:
             raise 
         
     def Single_Client_With_Thread(self, client_socket, address):
+        
         #stop_q = threading.Event()
         client_in = False
         msg_id_dic = {}
@@ -161,18 +164,84 @@ class Server:
 
         if client_in:     #למקרה והexcpet לא מוציא את התרד 
 
-            '''
+        #    '''
+            with self.temp_recconect_dic_lock:
+                self.temp_recconect_dic[name] = {"queue": Queue(), "msg_ids": set()}
             queue_for_client = Queue()
             sending_q_client_thread = threading.Thread(target = self.Send_Client_By_Q, args=(queue_for_client, client_socket, socket_lock, ack_evnt))
             sending_q_client_thread.start()
-            self.Handle_recconect()
-            self.client_dic[name] = (queue_for_client, cipher)
-            '''
+            
+            print(f"retriving msgs for {name} that were not sent while offline")
+            msgs = DB_object.Recv_Messages_Not_Sent_To_Client(name)
 
+            if not msgs:
+                print(f"no msgs for {name}")
+            else:
+                for msg in msgs:
+                    if msg[0] != "wav":
+                        header = msg[4]
+                        data_bytes = msg[5]
+                        header_AES_for_client = cipher.aes_encrypt(header)
+                        data_AES_for_client = cipher.aes_encrypt(data_bytes)
+                        msg_AES = header_AES_for_client + data_AES_for_client
+                        try:
+                            queue_for_client.put(msg_AES)
+                        except (ConnectionResetError, BrokenPipeError, OSError):
+                            client_socket.close()
+                            client_connected = False
+                            self.clients_currently_on -= 1
+                    else:
+                        data_bytes = msg[5]
+                        voice_recording_bytes_len = len(data_bytes)
+                        total_chunks = math.ceil(voice_recording_bytes_len/CHUNK_DATA_MAX_SIZE)
+                        msg_id = msg[1]
+                        username_str = msg[2]
+                        counter = 0 
+                        chunk_offset = 0
+                        while counter < total_chunks:
+                            chunk_bytes = data_bytes[chunk_offset:chunk_offset + CHUNK_DATA_MAX_SIZE]
+                            chunk_bytes_len = len(chunk_bytes)
+                            header = Pack_Header("wav", msg_id, counter + 1, total_chunks, chunk_bytes_len, username_str, group_id)
+                            header_AES = cipher.aes_encrypt(header)
+                            chunk_data_AES = cipher.aes_encrypt(chunk_bytes)
+                            msg_AES = header_AES + chunk_data_AES
+                            #self.client_socket.send(voice_message_chunk_AES)
+                            try:
+                                queue_for_client.put(msg_AES)
+                                chunk_offset += CHUNK_DATA_MAX_SIZE
+                                counter += 1
+                            except (ConnectionResetError, BrokenPipeError, OSError):
+                                client_socket.close()
+                                client_connected = False
+                                self.clients_currently_on -= 1
+
+            while not self.temp_recconect_dic[name]["queue"].empty():
+                header, msg = self.temp_recconect_dic[name]["queue"].get() # .split("|", 1) #
+                header_AES_for_client = cipher.aes_encrypt(header)
+                data_AES_for_client = cipher.aes_encrypt(msg)
+                msg_AES = header_AES_for_client + data_AES_for_client
+                try:
+                    queue_for_client.put(msg_AES)
+                    self.temp_recconect_dic[name]["queue"].task_done()
+
+                except (ConnectionResetError, BrokenPipeError, OSError):
+                    client_socket.close()
+                    client_connected = False
+                    self.clients_currently_on -= 1
+                    with self.temp_recconect_dic_lock:
+                        self.temp_recconect_dic.pop(name, None)
+
+            with self.client_dic_lock:
+                self.client_dic[name] = (queue_for_client, cipher)
+
+            with self.temp_recconect_dic_lock:
+                self.temp_recconect_dic.pop(name, None)
+        #    '''
+            '''
             self.client_dic[name] = (Queue(), cipher)
             sending_q_client_thread = threading.Thread(target = self.Send_Client_By_Q, args=(self.client_dic[name][0], client_socket, socket_lock, ack_evnt))
             sending_q_client_thread.start()
-            
+            '''
         while client_connected:
             try:
                 header_encrypted= self.recv_exact(client_socket, HEADER_SIZE)
@@ -182,6 +251,7 @@ class Server:
                 if msg_type_str == "str":
                     data_AES = self.recv_exact(client_socket, payload_len)
                     data_bytes = cipher.aes_decrypt(data_AES)
+                    
                     '''
                     for key, value in self.client_dic.items():
                         if key != username_str:     #אפשר להוריד לבינתיים נראה לי    
@@ -199,6 +269,10 @@ class Server:
                                 value[0].put(msg_AES)
                         
                     else:
+
+                        DB_object.Save_Message(msg_type_str, msg_id, username_str, group_id, header, data_bytes)
+                        DB_object.Add_Users_To_connect_Messages_by_Group(msg_id, group_id)
+
                         for user in DB_object.Get_Group_Members(group_id, method = "list"):
 
                             if user not in self.client_dic:
@@ -221,8 +295,9 @@ class Server:
                     #client_socket.send(ack_msg_AES)
                     if msg_id_dic[msg_id]["chunks_received"] == msg_id_dic[msg_id]["total_chunks"]:
 
-                        data_bytes = msg_id_dic[msg_id]["vc_data"]
-                        DB_object.Save_audio_bytes_in_dir(data_bytes, msg_id)   
+                        data_bytes = msg_id_dic[msg_id]["vc_data"]  
+                        DB_object.Save_Message(msg_type_str, msg_id, username_str, group_id, header, data_bytes)
+                        DB_object.Add_Users_To_connect_Messages_by_Group(msg_id, group_id)
                     '''
                     for key, value in self.client_dic.items():
                         if key != username_str:     #אפשר להוריד לבינתיים נראה לי    
@@ -241,11 +316,32 @@ class Server:
                                 value[0].put(msg_AES)
                 
                     else:
+                        
+
+
                         for user in DB_object.Get_Group_Members(group_id, method = "list"):
 
                             if user not in self.client_dic:
-                                print(f"{user} not online")
-                                pass
+                                with self.temp_recconect_dic_lock:
+                                    if user in self.temp_recconect_dic:
+                                        print(f"{user} is reconnecting, putting msg in temp queue")
+                                        if msg_id not in self.temp_recconect_dic[user]["msg_ids"]:
+                                            print(f"{user} connected middle of receiving wav message, putting msg in temp queue")
+                                            self.temp_recconect_dic[user]["msg_ids"].add(msg_id)
+                                            temp_counter = 1 #
+                                            for chunk in msg_id_dic[msg_id]["vc_data"]:
+                                                header_recconect = Pack_Header("wav", msg_id, temp_counter, total_chunks, len(chunk), username_str, group_id)
+                                                temp_counter += 1
+                                                #chunk = header_recconect + "|" + chunk #
+                                                chunk = (header_recconect, chunk) #
+                                                self.temp_recconect_dic[user]["queue"].put(chunk)
+                                        else:
+                                            #chunk = header + "|" + chunk_data_bytes 
+                                            chunk = (header, chunk_data_bytes)
+                                            self.temp_recconect_dic[user]["queue"].put(chunk)
+                                    else:
+                                        print(f"{user} not online")
+                                    pass
 
                             else:
                                 chunk_data_AES_for_client = self.client_dic[user][1].aes_encrypt(chunk_data_bytes)
@@ -280,18 +376,27 @@ class Server:
                         log_answer_len = len(log_answer_bytes)
 
                     header = Pack_Header("ans", msg_id, chunk_idx, total_chunks, log_answer_len, username_str, group_id)
+                    DB_object.Save_Message("ans", msg_id, username_str, group_id, header, log_answer_bytes)
+
 
                     if log_answer.split("|")[0] == "At least one user does not exist ":
                         print("server log - entered send")
                         
+                        DB_object.Add_User_To_connect_Messages(msg_id, username_str)
+
                         header_AES_return = cipher.aes_encrypt(header)
                         log_answer_AES = cipher.aes_encrypt(log_answer.encode())
                         msg_AES = header_AES_return + log_answer_AES
-                        self.client_dic[username_str][0].put(msg_AES)
                         
+                        if username_str in self.client_dic:
+                           self.client_dic[username_str][0].put(msg_AES)
+                        else:
+                            print(f"{username_str} is not online")
                     else:
                         for user in DB_object.Get_Group_Members(group_id_current, method = "list"):
                             
+                            DB_object.Add_User_To_connect_Messages(msg_id, user)
+
                             if user not in self.client_dic:
                                 print(f"{user} is not online")
                             
@@ -316,7 +421,7 @@ class Server:
                     data_str = data_bytes.decode()
 
                     target_group_id, target_username, group_name_for_added_user = data_str.split("|")
-                    with self.add_group_lock:
+                    with self.edit_group_lock:
                         did_work, log_answer = DB_object.Add_To_Group(target_group_id, target_username)
                     
                     log_answer += f" |add.{target_group_id}.{target_username}"
@@ -330,8 +435,11 @@ class Server:
                     print(log_answer)
 
                     if not did_work:
-                        msg_AES = header_AES + log_answer_AES
-                        self.client_dic[username_str][0].put(msg_AES)
+                        if username_str in self.client_dic:
+                            msg_AES = header_AES + log_answer_AES
+                            self.client_dic[username_str][0].put(msg_AES)
+                        else:
+                            print(f"{username_str} is not online")
 
                     else:
                         for user in DB_object.Get_Group_Members(target_group_id, method = "list"):
@@ -369,7 +477,7 @@ class Server:
                     data_str = data_bytes.decode()
 
                     target_group_id, target_username, group_name_for_removed_user = data_str.split("|")
-                    with self.remve_group_lock:
+                    with self.edit_group_lock:
                         did_work, log_answer = DB_object.Remove_From_Group(target_group_id, target_username)
                     
                     log_answer += f" |rmv.{target_group_id}.{target_username}"
@@ -383,17 +491,22 @@ class Server:
                     print(log_answer)
 
                     if not did_work:
-                        msg_AES = header_AES + log_answer_AES
-                        self.client_dic[username_str][0].put(msg_AES)
+                        if username_str in self.client_dic:
+                            msg_AES = header_AES + log_answer_AES
+                            self.client_dic[username_str][0].put(msg_AES)
+                        else:
+                            print(f"{username_str} is not online")
 
                     else:
                         if target_username in self.client_dic:
+
+                            msg_id_tu = Generate_msg_id()
                             log_answer_tu = DB_object.Give_Remove_Group_Message_To_Removed(target_group_id, group_name_for_removed_user)
                             log_answer_bytes_tu = log_answer_tu.encode()
                             log_answer_AES_tu = self.client_dic[target_username][1].aes_encrypt(log_answer_bytes_tu)
                             log_answer_len_tu = len(log_answer_AES_tu)
 
-                            header_tu = Pack_Header("ans", msg_id, chunk_idx, total_chunks, log_answer_len_tu, username_str, group_id)
+                            header_tu = Pack_Header("ans", msg_id_tu, chunk_idx, total_chunks, log_answer_len_tu, username_str, group_id)
                             header_AES_tu = self.client_dic[target_username][1].aes_encrypt(header_tu)
 
                             msg_AES_tu = header_AES_tu + log_answer_AES_tu
@@ -420,6 +533,9 @@ class Server:
                     #if not did_work:
                     #rememeber to add group_name to message to added client    
                 elif msg_type_str == "ack":
+                    if chunk_idx == total_chunks:
+                        print(f"received ACK for complete message {msg_id} from {username_str}")
+                        DB_object.Update_Connect_Message_Status(msg_id, username_str)
                     ack_evnt.set()
                     continue
 

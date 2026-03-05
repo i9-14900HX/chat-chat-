@@ -9,7 +9,8 @@ import threading
 #לא לשגכוח להעביר את הlock למשתנה מחלקתי לפני ה innit
 
 class DB_Class_General:
-    
+    write_lock = threading.Lock()
+
     def __init__(self):
         #השגת תיקייה מריצה
         self.file_path = Path(__file__).resolve()
@@ -40,7 +41,6 @@ class DB_Class_General:
         self.c.execute('''CREATE TABLE IF NOT EXISTS groups (group_id integer, usernames_str text)''')
         self.conn.commit()
         
-        self.write_lock = threading.Lock()
 
     def save_user_and_pass(self, username, password):
         '''Saves the data from the user into the sql table
@@ -49,7 +49,7 @@ class DB_Class_General:
         print('hashing')
         hash_passwords=hashing.HashPasswords()
         salt, pw_hash = hash_passwords.hash_new_password(password)
-        with self.write_lock:
+        with DB_Class_General.write_lock:
             self.c.execute("INSERT INTO users VALUES (?,?,?)",(username, pw_hash,salt))
             self.conn.commit()
 
@@ -77,12 +77,11 @@ class DB_Class_General:
                     return True
         return False
 
-    def print_table(self):
+    def print_table(self, table_name):
         '''Prints the table'''
-        self.c.execute("SELECT * FROM users")
+        self.c.execute(f"SELECT * FROM {table_name}")
         print(self.c.fetchall())
         
-
     def Save_audio_bytes_in_dir(self, bytes_array, msg_id):
         arrays = [np.frombuffer(chunk, dtype=np.float32) for chunk in bytes_array]
         # מחברים את כל הצ'אנקים למערך רציף אחד
@@ -92,6 +91,12 @@ class DB_Class_General:
         # שומרים את הקובץ
         sf.write(filename, full_audio, 44100)
         print("Saved WAV:", filename)
+
+    def Get_voice_message_by_file(self, filename):
+        
+        data, samplerate = sf.read(filename, dtype='float32')  # data = np.array
+        raw_bytes = data.tobytes()
+        return raw_bytes
 
     def Create_Group(self, group_id, usernames_str):
 
@@ -104,7 +109,7 @@ class DB_Class_General:
                 print(log_answer)
                 return did_create_group, log_answer
 
-        with self.write_lock:
+        with DB_Class_General.write_lock:
             self.c.execute("INSERT INTO groups VALUES (?,?)",(group_id, usernames_str))
             self.conn.commit()  
 
@@ -143,7 +148,7 @@ class DB_Class_General:
         
         usernames_new = "|".join(u for u in usernames_list if u != target_username) + "|"
 
-        with self.write_lock:
+        with DB_Class_General.write_lock:
             self.c.execute("UPDATE groups SET usernames_str = ? WHERE group_id = ?",  (usernames_new, group_id))
             self.conn.commit()  
 
@@ -162,7 +167,7 @@ class DB_Class_General:
         usernames_str = self.Get_Group_Members(group_id, method = "str")
         usernames_str_new = usernames_str + target_username + "|"
 
-        with self.write_lock:
+        with DB_Class_General.write_lock:
             self.c.execute("UPDATE groups SET usernames_str = ? WHERE group_id = ?",  (usernames_str_new, group_id))
             self.conn.commit()  
 
@@ -195,6 +200,7 @@ class DB_Class_General:
 
     def Save_Message(self,msg_type, msg_id, username_str, group_id, header, messagge):
 
+        print("saving message in DB")
         if msg_type == "wav":
             bytes_array = messagge
             self.Save_audio_bytes_in_dir(bytes_array, msg_id)
@@ -202,7 +208,7 @@ class DB_Class_General:
             messagge = str(filename)
             print (f"message is wav, saved in {filename} and path is {self.audio_dir_str}")
 
-        with self.write_lock:
+        with DB_Class_General.write_lock:
             self.c.execute("INSERT INTO messages VALUES (?,?,?,?,?,?)",(msg_type, msg_id, username_str, group_id, header, messagge))
             self.conn.commit()
 
@@ -213,7 +219,7 @@ class DB_Class_General:
 
     def Add_User_To_connect_Messages(self, msg_id, username_str):
 
-        with self.write_lock:
+        with DB_Class_General.write_lock:
             self.c.execute("INSERT INTO connectmessages VALUES (?,?,?)",(msg_id, username_str, False))
             self.conn.commit()
 
@@ -227,6 +233,7 @@ class DB_Class_General:
     def Recv_Messages_Not_Sent_To_Client(self, username_str):
 
         messages = []
+        updated_messages = []
 
         self.c.execute("SELECT msg_id FROM connectmessages WHERE username_str = ? AND did_recv = ?" , (username_str, False))
         rows = self.c.fetchall()
@@ -234,7 +241,7 @@ class DB_Class_General:
             return messages
         
         msg_ids = [row[0] for row in rows]
-        
+
         
         #for msg_id in msg_ids:
         #    messages.append(self.Get_Message_by_msg_id(msg_id))
@@ -243,13 +250,36 @@ class DB_Class_General:
         self.c.execute(f"SELECT * FROM messages WHERE msg_id IN ({placeholders}) ORDER BY msg_id ASC", msg_ids)
         messages = self.c.fetchall()
 
-        return messages
+        for msg in messages:
+            if msg[0] == "wav":
+
+                filename = msg[5]
+                raw_bytes = self.Get_voice_message_by_file(filename)
+
+                msg = list(msg)
+                msg[5] = raw_bytes
+                msg = tuple(msg)
+
+            updated_messages.append(msg)
+
+        return updated_messages
 
     def Update_Connect_Message_Status(self, msg_id, username_str):
 
-        with self.write_lock:
+        print(f"updating connect message status for {msg_id} and {username_str}")
+        with DB_Class_General.write_lock:
             self.c.execute("UPDATE connectmessages SET did_recv = ? WHERE msg_id = ? AND username_str = ?",  (True, msg_id, username_str))
             self.conn.commit()
+
+    def Print_messages(self):
+
+        self.c.execute("SELECT * FROM messages")
+        print(self.c.fetchall())
+
+    def print_connect_messages(self):
+
+        self.c.execute("SELECT * FROM connectmessages")
+        print(self.c.fetchall())
 
     #def Delete_Message(self, msg_id, username)
         
@@ -391,6 +421,15 @@ class DB_Class_Specific():
         
     def Get_Message_by_group(self, group_id):
         
-        self.c.execute("SELECT * FROM messages WHERE group_id = ?", (group_id,))
+        self.c.execute("SELECT * FROM messages WHERE group_id = ? ORDER BY msg_id ASC", (group_id,))
         return self.c.fetchall()
     
+if __name__=='__main__':
+    db = DB_Class_General()
+    #db.Save_user_and_pass("moshe", "1234")
+    #db.Save_user_and_pass("dina", "1234")
+    #db.Save_user_and_pass("yossi", "1234")
+    #db.Create_Group(1, "moshe|dina|yossi|")
+    #db.Print_Group()
+    db.Print_messages()
+    db.print_connect_messages()
