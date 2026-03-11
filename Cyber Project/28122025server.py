@@ -11,6 +11,7 @@ import soundfile as sf
 import numpy as np
 import DB_file 
 from queue import Queue
+import time
 
 class Server:
     def __init__(self):
@@ -97,12 +98,16 @@ class Server:
         try: 
             dh, pk = Cipher.get_dh_public_key()
             client_pk = client_socket.recv(1024)
+            if not client_pk:
+                raise OSError
             shared_key = Cipher.get_dh_shared_key(dh, client_pk)
             print("shared key:", shared_key)
             client_socket.send(pk)
             cipher = Cipher(shared_key, NONCE)
             while not client_in:
                 header_encrypted= self.recv_exact(client_socket, HEADER_SIZE)
+                if not header_encrypted:
+                    raise OSError
                 header = cipher.aes_decrypt(header_encrypted)
                 method , msg_id, chunk_idx, total_chunks, payload_len, username_str, group_id = UnPack_Header(header)
                 data_AES = self.recv_exact(client_socket, payload_len)
@@ -163,6 +168,18 @@ class Server:
 
 
         if client_in:     #למקרה והexcpet לא מוציא את התרד 
+            try:
+                data = client_socket.recv(11)
+
+                if not data:
+                    raise ConnectionError
+                else:
+                    print(cipher.aes_decrypt(data).decode())
+            except (ConnectionResetError, BrokenPipeError, ConnectionError, OSError):
+                client_socket.close()
+                client_connected = False
+                self.clients_currently_on -= 1
+                return
 
         #    '''
             with self.temp_recconect_dic_lock:
@@ -215,6 +232,8 @@ class Server:
                                 client_connected = False
                                 self.clients_currently_on -= 1
 
+                                                            
+            time.sleep(0.5) # to try to prevent the case of the client reconnecting in the middle of receiving the wav message and the msg being put in the temp queue after the client has already received part of the message and thus not receiving the rest of the message because the server thinks it has already been sent to him while it was actually put in the temp queue after he reconnected
             while not self.temp_recconect_dic[name]["queue"].empty():
                 header, msg = self.temp_recconect_dic[name]["queue"].get() # .split("|", 1) #
                 header_AES_for_client = cipher.aes_encrypt(header)
@@ -339,6 +358,7 @@ class Server:
                                             #chunk = header + "|" + chunk_data_bytes 
                                             chunk = (header, chunk_data_bytes)
                                             self.temp_recconect_dic[user]["queue"].put(chunk)
+                                            time.sleep(0.5) # to try to prevent the case of the client reconnecting in the middle of receiving the wav message and the msg being put in the temp queue after the client has already received part of the message and thus not receiving the rest of the message because the server thinks it has already been sent to him while it was actually put in the temp queue after he reconnected
                                     else:
                                         print(f"{user} not online")
                                     pass
@@ -567,7 +587,7 @@ class Server:
 
                     continue
                 
-            except(ConnectionResetError, BrokenPipeError): #except (socket.timeout, ConnectionResetError, BrokenPipeError):
+            except(ConnectionResetError, BrokenPipeError, ConnectionError, OSError): #except (socket.timeout, ConnectionResetError, BrokenPipeError):
                 with self.client_dic_lock:
                 #    for name in list(self.client_dic.keys()):
                 #        if client_disconnected(name):

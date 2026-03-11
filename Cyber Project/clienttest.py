@@ -11,41 +11,51 @@ from queue import Queue
 import DB_file
 from tqdm import tqdm
 from audio_player import *
+from PyQt6.QtCore import QThread, pyqtSignal
+
 # from audio_recorder import Recorder
 class My_Error(Exception):
     #לעבוד על custom exceptions, לראות raise | except | try | finally | as e . נראה מגניב ביותר  
     pass
-class Client:
+class Client(QThread):
+
+    new_message_signal = pyqtSignal(str, str, str, int)  # msg_id, username, message, group_id
+    new_audio_signal = pyqtSignal(str, str, str, int)  # msg_id, username, fileplace, group_id
+    #new_in_group
+    #new_add_group
+    #new_remv_group
+    new_serversays_signal = pyqtSignal(str)
+
+
     def __init__(self):
+        super().__init__()
+        self.client_socket=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.connected = False
+
+    def initialize_parameters(self):
         self.socket_lock = threading.Lock()
         self.not_duplicate_group = threading.Lock()
         self.audio_data_dic = {}
-        data_str = ''
         self.message_queue = Queue()
         self.is_ack = threading.Event()
         self.is_ack.clear()
+        self.is_ack_dic = {}
         self.default_group = 0
         self.in_group = 0
-        self.client_socket=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    def Connect_To_Server(self):
         self.client_socket.connect(('127.0.0.1',6666))
         self.connected = True
         dh, pk = Cipher.get_dh_public_key()
         self.client_socket.send(pk)
         reply = self.client_socket.recv(2048)
         shared_key = Cipher.get_dh_shared_key(dh, reply)
-        print("shared key:", shared_key)
         self.cipher = Cipher(shared_key, NONCE)
-        while not data_str == 'You are In':
+    
+    def Get_in_Server(self, method, username, password):
+            data_str = ""
 
-            print("Enter username, make sure the username is between 3-16 characters, and includes only letters and numbers")
-            self.username = self.Get_Good_Username()
-
-            print("Enter password, make sure the username is between 3-16 characters, and includes only letters and numbers")
-            self.password = self.Get_Good_Password()
-
-            method = input("would you like to sign up or sign in? write sin or sup accordingly\n")
-
-            data = self.username + "@@@" + self.password
+            data = username + "@@@" + password
             data_len = len(data)
 
             header = Pack_Header(method , "0", 0, 0, data_len, "0", 0)
@@ -60,38 +70,14 @@ class Client:
             data_AES = self.recv_exact(payload_len)
             data_bytes = self.cipher.aes_decrypt(data_AES)                
             data_str = data_bytes.decode()
-            print(data_str)
+            return data_str
 
-        
+
+    def Start_Client(self):
+        self.initialize_parameters()
         self.Server_Logistics() 
-
-    def Get_Good_Username(self):
-        is_bad = True
-        while is_bad:
-           username = input()
-           if 3 > len(username) or len(username) > 16:
-                print("bad username - too short or long")  
-                continue
-           if not username.isalnum():
-                print("bad username - unsupported characters")  
-                continue
-           is_bad = False
-        print("acceptable. have a nice day.")
-        return username
+        
     
-    def Get_Good_Password(self):
-        is_bad = True
-        while is_bad:
-           password = input()
-           if 3 > len(password) or len(password) > 16:
-                print("bad password - too short or long")  
-                continue
-           if not password.isalnum():
-                print("bad password - unsupported characters")  
-                continue
-           is_bad = False
-        print("acceptable. have a nice day.")
-        return password
     
     def format_msg_id(self, msg_id_str: str) -> str:
 
@@ -114,11 +100,19 @@ class Client:
     
     def Send_By_Queue(self):
         while self.connected:
-            msg_AES = self.message_queue.get()  # מחכה להודעה חדשה
+            msg_AES = self.message_queue.get()
+            if msg_AES is None:
+                break
+                  # מחכה להודעה חדשה
             with self.socket_lock:
-                self.client_socket.send(msg_AES)
+                if self.connected:
+                    try:
+                        self.client_socket.send(msg_AES)
+                    except OSError:
+                        break
+
             self.message_queue.task_done()
-            self.is_ack.wait()
+            self.is_ack.wait(timeout=5)
             self.is_ack.clear()
 
 
@@ -127,13 +121,13 @@ class Client:
         # vb    ping_thread.start()
 
 
-            recv_data_from_client_thread = threading.Thread(target = self.recv_data_from_client)
-            recv_data_from_client_thread.start()
+            #recv_data_from_client_thread = threading.Thread(target = self.recv_data_from_client)
+            #recv_data_from_client_thread.start()
             recv_data_from_server_and_Handle_thread = threading.Thread(target = self.recv_data_from_server_and_Handle)
             recv_data_from_server_and_Handle_thread.start()
             queue_thread = threading.Thread(target= self.Send_By_Queue)
             queue_thread.start()
-
+    
     def recv_data_from_client(self): 
         self.DB_object_client_recvr = DB_file.DB_Class_Specific(self.username)
         self.player_object = Audio_player()
@@ -212,7 +206,8 @@ class Client:
             else:
                 msg_AES = self.Client_string_message(input_in_string, self.in_group)
                 self.Send_Server_simple(msg_AES)
-        '''
+    
+    '''
     def Handle_data_str_message(self, meta_data_type, data_AES):
         full_meta_data, meta_data_length_int = self.Generate_meta_data_by_method(data_AES, meta_data_type, "AES")
         self.Send_Server(data_AES, full_meta_data, meta_data_length_int)
@@ -233,9 +228,16 @@ class Client:
         return bytes(data)
     
     def recv_data_from_server_and_Handle(self):
+        self.client_socket.send(self.cipher.aes_encrypt(b"elevenchars"))
         self.DB_object_server_recvr = DB_file.DB_Class_Specific(self.username)
+        #self.client_socket.settimeout(10)
         while self.connected:
-            header_encrypted = self.recv_exact(HEADER_SIZE)
+            try:
+                header_encrypted = self.recv_exact(HEADER_SIZE)
+            except (OSError) as e:
+                self.connected = False
+                print(f"error: {e}")
+                break
             header = self.cipher.aes_decrypt(header_encrypted)
             msg_type_str, msg_id, chunk_idx, total_chunks, payload_len, username_str, group_id = UnPack_Header(header)
             if msg_type_str == "str":
@@ -253,13 +255,14 @@ class Client:
                     if chunk_idx != 1:
                         print(f"Error: Received chunk {chunk_idx} for message ID {msg_id} before receiving the first chunk.")
                         fine = False
+                        continue
                     else:
                         self.audio_data_dic[msg_id] = {"vc_data": [], "total_chunks": total_chunks, "chunks_received": 0}
 
                 if fine:
                     self.audio_data_dic[msg_id]["vc_data"].append(chunk_data_bytes)
                     self.audio_data_dic[msg_id]["chunks_received"] += 1
-                
+                    
                     if self.audio_data_dic[msg_id]["chunks_received"] == self.audio_data_dic[msg_id]["total_chunks"]:
 
                         data_bytes = self.audio_data_dic[msg_id]["vc_data"]
@@ -273,15 +276,23 @@ class Client:
                 show, do = data_str.split("|", 1) #split only once 
                 print(f"server says: {show}")
                 self.Handle_Server_Ans(do)
+                self.new_serversays_signal.emit(show)
 
             elif msg_type_str == "ack":
                 self.is_ack.set()
+                if msg_id in self.is_ack_dic:
+                    self.is_ack_dic[msg_id].set()
                 continue
 
             ack_msg = Generate_ACK_msg(msg_id, self.username, chunk_idx, total_chunks, group_id)
             ack_msg_AES = self.cipher.aes_encrypt(ack_msg)
             with self.socket_lock:
                     self.client_socket.send(ack_msg_AES)
+            #except(ConnectionResetError, BrokenPipeError, OSError, socket.timeout) as e:
+            #    if isinstance(e, socket.timeout):
+            #        pass
+            #    else:
+            #        pass
 
             '''
             if meta_data_in_bytes_From_Server_type = b'<ACK>':
@@ -289,7 +300,14 @@ class Client:
                 pass
             else:
             '''
-            
+    def Start_recording(self):
+        self.recorder_class_object = Recorder()
+        self.recorder_class_object.Start_Recording_thread = threading.Thread(target = self.recorder_class_object.Start_Recording)
+        self.recorder_class_object.Start_Recording_thread.start()
+    
+    def Stop_recording(self):
+        full_audio_recording_bytes = self.recorder_class_object.End_Recording()
+        return full_audio_recording_bytes
 
     def Get_Voice_Recording(self):
             
@@ -313,8 +331,6 @@ class Client:
             string_message_AES = self.cipher.aes_encrypt(string_message_bytes)
 
             msg_len = len(string_message_AES)
-            
-            group_id = self.in_group
 
             header = Pack_Header(msg_type_str, msg_id, chunk_idx, total_chunks, msg_len, self.username, group_id)
 
@@ -322,7 +338,9 @@ class Client:
 
             msg = header_AES + string_message_AES
 
-            return msg
+            #return msg
+
+            self.Send_Server_simple(msg)
             #print(data_AES_To_Server)
             #self.client_socket.send(data_AES_To_Server)
     def Send_Server_simple(self, msg_AES):
@@ -345,42 +363,50 @@ class Client:
         voice_recording_bytes_len = len(voice_recording_bytes)
         total_chunks = math.ceil(voice_recording_bytes_len/CHUNK_DATA_MAX_SIZE)
         msg_id = Generate_msg_id()
+        self.is_ack_dic[msg_id] = threading.Event()
         while counter < total_chunks:
             chunk_bytes = voice_recording_bytes[chunk_offset:chunk_offset + CHUNK_DATA_MAX_SIZE]
             chunk_bytes_len = len(chunk_bytes)
             voice_message_chunk_AES = self.Client_Voice_Message(chunk_bytes, msg_id, counter + 1, total_chunks, chunk_bytes_len, group_id)
             #self.client_socket.send(voice_message_chunk_AES)
-            self.message_queue.put(voice_message_chunk_AES)
+            if self.connected:
+                self.message_queue.put(voice_message_chunk_AES)
+            else:
+                break
             chunk_offset += CHUNK_DATA_MAX_SIZE
             bytes_sent += chunk_bytes_len
             print(f"{bytes_sent/voice_recording_bytes_len*100}% sent")
-            self.is_ack.wait()
-            self.is_ack.clear()
+            if not self.is_ack_dic[msg_id].wait(timeout=10):  # מחכה לאישור עם טיימאוט של 10 שניות
+                print(f"Error: Server timed out on ACK for chunk {counter + 1}")
+                # אופציונלי: אפשר לעשות פה 'break' כדי להפסיק הכל, 
+                # או לנסות לשלוח שוב (Retry)
+                break
+            self.is_ack_dic[msg_id].clear()
             counter += 1
         return
 
-    def Create_Group_Send_Server_Msg(self, message_raw):
+    def Create_Group_Send_Server_Msg(self, group_name, users_list):
             
             #_ , group_name , users = message_raw.split("|")
-            _ , group_name , users = [u for u in message_raw.split("|") if u]
-            users += ' ' + self.username
+            #_ , group_name , users = [u for u in message_raw.split("|") if u]
+            #users += ' ' + self.username
 
-            user_list = users.split(' ')
+            #user_list = users.split(' ')
 
-            group_name = group_name.strip()
+            #group_name = group_name.strip()
             message = group_name + ','
 
-            if len(user_list) != len(set(user_list)):
-                return "duplicate usernames"
+            #if len(user_list) != len(set(user_list)):
+            #    return "duplicate usernames"
 
-            for user in user_list:
-                if not user:
-                    return "bad spacing/formatting"
+            #for user in user_list:
+            #    if not user:
+            #        return "bad spacing/formatting"
 
-            if self.DB_object_client_recvr.Is_Group_Exist(group_name):
-                return "Group name already exists, please change"
+            #if self.DB_object_client_recvr.Is_Group_Exist(group_name):
+            #    return "Group name already exists, please change"
 
-            for username in user_list:
+            for username in users_list:
                 message += username + '|'
                  
             msg_type_str = "crt"
@@ -399,7 +425,8 @@ class Client:
 
             msg = header_AES + string_message_AES
 
-            return msg
+            #return msg
+            self.Send_Server_simple(msg)
     
     def Add_To_Group_Send_Server_Msg(self, message_raw: str, target_group):
             
@@ -493,14 +520,10 @@ class Client:
         do_instructions = do.split(".")
 
         if len(do_instructions) == 2:
-            print(do_instructions)
             _ , target_group_id = do_instructions
             target_username = self.username
-            print("removing self from group")
         else:
-            print(do_instructions)
             _ , target_group_id, target_username = do_instructions
-            print(f"removing {target_username} from group")
 
         self.DB_object_server_recvr.Remove_From_Group(target_group_id, target_username)
 
@@ -523,9 +546,33 @@ class Client:
             case _:
                 print(f"method {method} is not in the system")
 
-
-
+    def close_client(self):
+        '''
+        print("starting client shutdown")
+        self.connected = False
+        time.sleep(0.1)
+        self.client_socket.close()
+        '''
+        print("Initiating client shutdown...")
+        self.connected = False
         
+        # "הזרקת" הודעת סיום לתור כדי לשחרר את ה-get() המחכה
+        if hasattr(self, 'message_queue'):
+            self.message_queue.put(None) 
+        
+        # שחרור ה-Event של ה-ACK אם מישהו מחכה לו
+        if hasattr(self, 'is_ack'):
+            self.is_ack.set()
+
+        try:
+            # סגירת הסוקט בצורה אגרסיבית יותר כדי להפסיק recv_exact תקוע
+            self.client_socket.shutdown(socket.SHUT_RDWR)
+            self.client_socket.close()
+        except OSError:
+            pass # הסוקט כבר סגור
+        
+        print("Client socket closed.")
+            
 
 
     '''
