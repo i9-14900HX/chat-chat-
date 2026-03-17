@@ -41,8 +41,10 @@ class Recorder(QObject):
 
     def Force_close(self):
         if self.is_force_close:
+            print("forcing stream to stop")
             self.stream.stop()
-            self.stream.close()     
+            self.stream.close()
+            self.is_force_close = False
 
     def __del__(self):
     # שימוש ב-getattr כדי למנוע קריסה אם המשתנה לא קיים

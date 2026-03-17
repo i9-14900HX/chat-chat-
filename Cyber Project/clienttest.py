@@ -20,10 +20,10 @@ class My_Error(Exception):
 class Client(QThread):
 
     new_message_signal = pyqtSignal(str, str, str, int)  # msg_id, username, message, group_id
-    new_audio_signal = pyqtSignal(str, str, str, int)  # msg_id, username, fileplace, group_id
-    #new_in_group
-    #new_add_group
-    #new_remv_group
+    new_audio_signal = pyqtSignal(str, str, int, str)  # msg_id, username, fileplace, group_id
+    new_in_group = pyqtSignal(str, int)
+    new_add_group = pyqtSignal(int, str)
+    new_remv_group = pyqtSignal(int, str)
     new_serversays_signal = pyqtSignal(str)
 
 
@@ -245,6 +245,7 @@ class Client(QThread):
                 data_bytes = self.cipher.aes_decrypt(data_AES)
                 data_str = data_bytes.decode()
                 self.DB_object_server_recvr.Save_Message(msg_type_str, msg_id, username_str, group_id, data_str)
+                self.new_message_signal.emit(username_str, data_str, msg_id, group_id)
                 print(f"{self.format_msg_id(msg_id)} {username_str} sent: {data_str}, group: {group_id} ,supposed to be from client\n")
             elif msg_type_str == "wav":
                 fine = True
@@ -255,7 +256,7 @@ class Client(QThread):
                     if chunk_idx != 1:
                         print(f"Error: Received chunk {chunk_idx} for message ID {msg_id} before receiving the first chunk.")
                         fine = False
-                        continue
+                        #continue אנחנו עדיין רוצים לשלוח ack
                     else:
                         self.audio_data_dic[msg_id] = {"vc_data": [], "total_chunks": total_chunks, "chunks_received": 0}
 
@@ -268,6 +269,7 @@ class Client(QThread):
                         data_bytes = self.audio_data_dic[msg_id]["vc_data"]
                         #self.DB_object_server_recvr.Save_audio_bytes_in_dir(data_bytes, msg_id)
                         self.DB_object_server_recvr.Save_Message(msg_type_str, msg_id, username_str, group_id, data_bytes)
+                        self.new_audio_signal.emit(username_str, msg_id, group_id, str(self.DB_object_server_recvr.audio_dir / f"recording{msg_id}.wav"))
 
             elif msg_type_str == "ans":
                 data_AES = self.recv_exact(payload_len)
@@ -430,16 +432,20 @@ class Client(QThread):
     
     def Add_To_Group_Send_Server_Msg(self, message_raw: str, target_group):
             
-            _ , username = message_raw.split('|', 1)
+            DB_object = DB_file.DB_Class_Specific(self.username)
+            #_ , username = message_raw.split('|', 1)
             #target_group_id = self.DB_object_client_recvr.Get_Group_Id_From_Name(target_group)
             target_group_id = target_group
+            username = message_raw
             target_user = username.strip()
 
-            if target_user in self.DB_object_client_recvr.Get_Group_Members(target_group_id, method = "list"):
+            #if target_user in self.DB_object_client_recvr.Get_Group_Members(target_group_id, method = "list"):
                 
-                return "no", f"{username} already in {target_group}"
+            #    return "no", f"{username} already in {target_group}"
             
-            msg = str(target_group_id) + "|" + target_user + "|" + self.DB_object_client_recvr.Get_Group_Name_From_Id(target_group_id)
+            msg = str(target_group_id) + "|" + target_user + "|" + DB_object.Get_Group_Name_From_Id(target_group_id)
+            del DB_object
+
             msg_bytes = msg.encode()
             msg_AES = self.cipher.aes_encrypt(msg_bytes)
 
@@ -456,19 +462,25 @@ class Client(QThread):
 
             header_msg_AES = header_AES + msg_AES
 
-            return None, header_msg_AES
-    
+            #return None, header_msg_AES
+            self.Send_Server_simple(header_msg_AES)
+                
     def Remove_From_Group_Send_Server_Msg(self, message_raw: str, target_group):
-            _ , username = message_raw.split('|', 1)
+            DB_object = DB_file.DB_Class_Specific(self.username)
+
+            #_ , username = message_raw.split('|', 1)
+            username = message_raw
             #target_group_id = self.DB_object_client_recvr.Get_Group_Id_From_Name(target_group)
             target_group_id = target_group
             target_user = username.strip()
 
-            if target_user not in self.DB_object_client_recvr.Get_Group_Members(target_group_id, method = "list"):
+            #if target_user not in self.DB_object_client_recvr.Get_Group_Members(target_group_id, method = "list"):
                 
-                return "no", f"{username} is not in {target_group}"
+            #    return "no", f"{username} is not in {target_group}"
             
-            msg = str(target_group_id) + "|" + target_user + "|" + self.DB_object_client_recvr.Get_Group_Name_From_Id(target_group_id)
+            msg = str(target_group_id) + "|" + target_user + "|" + DB_object.Get_Group_Name_From_Id(target_group_id)
+            del DB_object
+
             msg_bytes = msg.encode()
             msg_AES = self.cipher.aes_encrypt(msg_bytes)
 
@@ -485,12 +497,15 @@ class Client(QThread):
 
             header_msg_AES = header_AES + msg_AES
 
-            return None, header_msg_AES
+            #return None, header_msg_AES
+            self.Send_Server_simple(header_msg_AES)
+
     def Create_Group_Internal_Client(self, command):
 
         print(f"create group command: {command}")
         _ , group_id , usernames , group_name = command.split(".", 3)
 
+        '''
         origin_group_name = group_name
         group_unique_name_progressive_index = 1
         group_exist = True
@@ -504,8 +519,12 @@ class Client(QThread):
                     else:
                         group_unique_name_progressive_index += 1
                 print(f"{origin_group_name} name taken, new name: {group_name}")
-            
+        '''
+
+        print(f"creating group in client, {group_id} {usernames} {group_name}")
         self.DB_object_server_recvr.Create_Group(group_id, usernames, group_name)
+        group_id = int(group_id)
+        self.new_in_group.emit(group_name, group_id)
 
     def Add_To_Group_Internal_Client(self, do):
 
@@ -514,7 +533,11 @@ class Client(QThread):
         self.DB_object_server_recvr.Add_To_Group(target_group_id, target_username)
 
         print("client_added_succesfully in client")
-    
+
+        target_group_id = int(target_group_id)
+
+        self.new_add_group.emit(target_group_id, target_username)
+
     def Remove_From_Group_Internal_Client(self, do):
         
         do_instructions = do.split(".")
@@ -527,12 +550,19 @@ class Client(QThread):
 
         self.DB_object_server_recvr.Remove_From_Group(target_group_id, target_username)
 
+        target_group_id = int(target_group_id)
+
+
+        self.new_remv_group.emit(target_group_id, target_username)
+
         print("client_removed_succesfully in client")
     
     def Handle_Server_Ans(self, do):
 
         if not do:
+            print("no do")
             return
+        
         
         method = do.split(".")[0]
 

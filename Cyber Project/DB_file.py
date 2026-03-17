@@ -355,6 +355,15 @@ class DB_Class_Specific():
     def Remove_From_Group(self, group_id, target_username):
 
         #לזכור להוסיף בדיקה אם המשתמש שרוצים להוריד זה המשתמש עצמו, ואז למחוק את הקבוצה כולה, כי הוא לא יכול להיות בקבוצה שהוא לא שייך אליה
+        if target_username == self.username:
+
+            print("DB: removing self from group")
+            with self.write_lock:
+                self.c.execute("DELETE FROM groups WHERE group_id = ?",  (group_id,))
+                self.conn.commit()
+
+            return 
+
         usernames_new = ""
         usernames_list = self.Get_Group_Members(group_id, method = "list")
         usernames_new = "|".join(u for u in usernames_list if u != target_username) + "|"
@@ -404,6 +413,12 @@ class DB_Class_Specific():
 
         self.c.execute("SELECT * FROM groups")
         print(self.c.fetchall())
+
+    def Get_Groups(self):
+        
+        self.c.execute("SELECT group_id, group_name FROM groups")
+        return self.c.fetchall()
+        
 
     def Save_Message(self, msg_type, msg_id, username_str, group_id, messagge):
 

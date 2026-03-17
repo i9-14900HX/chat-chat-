@@ -28,6 +28,7 @@ class Server:
         self.clients_currently_on = 0
         self.broadcast_id = 0
         #self.clients_list = []
+        self.users_set = set()
         self.client_dic = {}
         self.temp_recconect_dic = {}
         self.place_holder_key = "place_holder_key"
@@ -38,6 +39,7 @@ class Server:
         self.temp_recconect_dic_lock = threading.Lock()
         self.group_id_counter_lock = threading.Lock()
         self.edit_group_lock = threading.Lock()
+        self.users_set_lock = threading.Lock()
         while True:
             client_socket,address=server.accept()
             #client_socket.settimeout(10)
@@ -88,6 +90,7 @@ class Server:
     def Single_Client_With_Thread(self, client_socket, address):
         
         #stop_q = threading.Event()
+        is_in_set = False
         client_in = False
         msg_id_dic = {}
         client_connected = True
@@ -152,6 +155,18 @@ class Server:
                         msg_AES = encrypted_header + encrypted_answer
                         client_socket.send(msg_AES)
                     else:
+                        with self.users_set_lock:
+                            if name in self.users_set:
+                                print(f"{name} connected already")
+                                encrypted_answer=cipher.aes_encrypt('user already connected'.encode())
+                                header = Pack_Header("ans",msg_id, chunk_idx, total_chunks, len(encrypted_answer), username_str, group_id)
+                                encrypted_header = cipher.aes_encrypt(header)
+                                msg_AES = encrypted_header + encrypted_answer
+                                client_socket.send(msg_AES)
+                                continue #שכחתי פה continu ואז השרת העביר את השמתמש הלאה והיה קריסה
+                            else:
+                                self.users_set.add(name)
+                                is_in_set = True    
                         client_in = True
                         encrypted_answer=cipher.aes_encrypt('You are In'.encode())
                         header = Pack_Header("ans",msg_id, chunk_idx, total_chunks, len(encrypted_answer), username_str, group_id)
@@ -163,6 +178,8 @@ class Server:
             client_socket.close()
             client_connected = False
             self.clients_currently_on -= 1
+            if is_in_set:
+                self.users_set.discard(name)
             return
                     #self.clients_list.append((client_socket, cipher))
 
@@ -179,6 +196,8 @@ class Server:
                 client_socket.close()
                 client_connected = False
                 self.clients_currently_on -= 1
+                self.users_set.discard(name)
+
                 return
 
         #    '''
@@ -207,18 +226,24 @@ class Server:
                             client_socket.close()
                             client_connected = False
                             self.clients_currently_on -= 1
+                            self.temp_recconect_dic.pop(name, None)
+                            self.users_set.discard(name)
+                            return
+
+
                     else:
                         data_bytes = msg[5]
                         voice_recording_bytes_len = len(data_bytes)
                         total_chunks = math.ceil(voice_recording_bytes_len/CHUNK_DATA_MAX_SIZE)
                         msg_id = msg[1]
                         username_str = msg[2]
+                        group_id = msg[3]
                         counter = 0 
                         chunk_offset = 0
                         while counter < total_chunks:
                             chunk_bytes = data_bytes[chunk_offset:chunk_offset + CHUNK_DATA_MAX_SIZE]
                             chunk_bytes_len = len(chunk_bytes)
-                            header = Pack_Header("wav", msg_id, counter + 1, total_chunks, chunk_bytes_len, username_str, group_id)
+                            header = Pack_Header("wav", msg_id, counter + 1, total_chunks, chunk_bytes_len, username_str, group_id) #לא הוגדר מקודם, שלח עם groupid 0 מהsin sup ממקודם
                             header_AES = cipher.aes_encrypt(header)
                             chunk_data_AES = cipher.aes_encrypt(chunk_bytes)
                             msg_AES = header_AES + chunk_data_AES
@@ -231,6 +256,10 @@ class Server:
                                 client_socket.close()
                                 client_connected = False
                                 self.clients_currently_on -= 1
+                                self.temp_recconect_dic.pop(name, None)
+                                self.users_set.discard(name)
+                                return
+
 
                                                             
             time.sleep(0.5) # to try to prevent the case of the client reconnecting in the middle of receiving the wav message and the msg being put in the temp queue after the client has already received part of the message and thus not receiving the rest of the message because the server thinks it has already been sent to him while it was actually put in the temp queue after he reconnected
@@ -249,6 +278,9 @@ class Server:
                     self.clients_currently_on -= 1
                     with self.temp_recconect_dic_lock:
                         self.temp_recconect_dic.pop(name, None)
+                    self.users_set.discard(name)
+                    return
+
 
             with self.client_dic_lock:
                 self.client_dic[name] = (queue_for_client, cipher)
@@ -444,7 +476,17 @@ class Server:
                     with self.edit_group_lock:
                         did_work, log_answer = DB_object.Add_To_Group(target_group_id, target_username)
                     
-                    log_answer += f" |add.{target_group_id}.{target_username}"
+                    print("entered if")
+
+                    if did_work:  # -----
+                        print("entered did work")
+                        log_answer += f" |add.{target_group_id}.{target_username}"
+                    else:
+                        print("entered did not work")
+                        log_answer += f" |"
+                    
+                    print(log_answer)
+
                     log_answer_bytes = log_answer.encode()
                     log_answer_AES = cipher.aes_encrypt(log_answer_bytes)
                     log_answer_len = len(log_answer_AES)
@@ -462,20 +504,32 @@ class Server:
                             print(f"{username_str} is not online")
 
                     else:
+                        DB_object.Save_Message("ans", msg_id, username_str, group_id, header, log_answer_bytes)
+                        
+                        msg_id_tu = Generate_msg_id()
+                        log_answer_tu = DB_object.Give_Add_Group_Message_To_Added(target_group_id, group_name_for_added_user)
+                        log_answer_bytes_tu = log_answer_tu.encode()
+                        log_answer_len_tu = len(log_answer_bytes_tu)
+
+                        header_tu = Pack_Header("ans", msg_id_tu, chunk_idx, total_chunks, log_answer_len_tu, username_str, group_id)
+
+                        DB_object.Save_Message("ans", msg_id_tu, username_str, group_id, header_tu, log_answer_bytes_tu)
+
                         for user in DB_object.Get_Group_Members(target_group_id, method = "list"):
+                            
+                            if user == target_username:
+                                DB_object.Add_User_To_connect_Messages(msg_id_tu, target_username)
+                            else:
+                                DB_object.Add_User_To_connect_Messages(msg_id, user)
 
                             if user not in self.client_dic:
                                 print (f"{user} is not online")
 
                             elif user == target_username:
-
-                                msg_id_tu = Generate_msg_id()
-                                log_answer_tu = DB_object.Give_Add_Group_Message_To_Added(target_group_id, group_name_for_added_user)
-                                log_answer_bytes_tu = log_answer_tu.encode()
+                                
+                               
                                 log_answer_AES_tu = self.client_dic[user][1].aes_encrypt(log_answer_bytes_tu)
-                                log_answer_len_tu = len(log_answer_AES_tu)
 
-                                header_tu = Pack_Header("ans", msg_id_tu, chunk_idx, total_chunks, log_answer_len_tu, username_str, group_id)
                                 header_AES_tu = self.client_dic[user][1].aes_encrypt(header_tu)
 
                                 msg_AES_tu = header_AES_tu + log_answer_AES_tu
@@ -499,8 +553,12 @@ class Server:
                     target_group_id, target_username, group_name_for_removed_user = data_str.split("|")
                     with self.edit_group_lock:
                         did_work, log_answer = DB_object.Remove_From_Group(target_group_id, target_username)
-                    
-                    log_answer += f" |rmv.{target_group_id}.{target_username}"
+                     
+                    if did_work: # -----
+                        log_answer += f" |rmv.{target_group_id}.{target_username}"
+                    else:
+                        log_answer += f" |"
+
                     log_answer_bytes = log_answer.encode()
                     log_answer_AES = cipher.aes_encrypt(log_answer_bytes)
                     log_answer_len = len(log_answer_AES)
@@ -518,15 +576,25 @@ class Server:
                             print(f"{username_str} is not online")
 
                     else:
+
+                        DB_object.Save_Message("ans", msg_id, username_str, group_id, header, log_answer_bytes)
+
+                        msg_id_tu = Generate_msg_id()
+                        log_answer_tu = DB_object.Give_Remove_Group_Message_To_Removed(target_group_id, group_name_for_removed_user)
+                        log_answer_bytes_tu = log_answer_tu.encode()
+                        log_answer_len_tu = len(log_answer_bytes_tu)
+
+                        header_tu = Pack_Header("ans", msg_id_tu, chunk_idx, total_chunks, log_answer_len_tu, username_str, group_id)
+
+                        DB_object.Save_Message("ans", msg_id_tu, username_str, group_id, header_tu, log_answer_bytes_tu)
+
+                        DB_object.Add_User_To_connect_Messages(msg_id_tu, target_username)
+
                         if target_username in self.client_dic:
-
-                            msg_id_tu = Generate_msg_id()
-                            log_answer_tu = DB_object.Give_Remove_Group_Message_To_Removed(target_group_id, group_name_for_removed_user)
-                            log_answer_bytes_tu = log_answer_tu.encode()
+                            
+                            
                             log_answer_AES_tu = self.client_dic[target_username][1].aes_encrypt(log_answer_bytes_tu)
-                            log_answer_len_tu = len(log_answer_AES_tu)
 
-                            header_tu = Pack_Header("ans", msg_id_tu, chunk_idx, total_chunks, log_answer_len_tu, username_str, group_id)
                             header_AES_tu = self.client_dic[target_username][1].aes_encrypt(header_tu)
 
                             msg_AES_tu = header_AES_tu + log_answer_AES_tu
@@ -537,6 +605,8 @@ class Server:
 
 
                         for user in DB_object.Get_Group_Members(target_group_id, method = "list"):
+                            
+                            DB_object.Add_User_To_connect_Messages(msg_id, user)
 
                             if user not in self.client_dic:
                                 print (f"{user} is not online")
@@ -597,6 +667,8 @@ class Server:
                 client_connected = False
                 client_socket.close()
                 msg_id_dic.clear()
+                self.users_set.discard(name)
+
                 break
             '''
             if client_ping_bytes == data_in_bytes_From_One:
