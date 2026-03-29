@@ -22,7 +22,7 @@ class Server:
         self.audio_dir.mkdir(parents=True, exist_ok=True)
         self.username_password_salt_db = str(self.folder_path / "username_password_salt_db.db")
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.bind(('127.0.0.1', 6666))
+        server.bind(('10.100.102.8', 6666))
         server.listen(100) 
         print("server on...")
         self.clients_currently_on = 0
@@ -34,7 +34,7 @@ class Server:
         self.place_holder_key = "place_holder_key"
         temporary_db_object = DB_file.DB_Class_General()
         self.group_id_counter = temporary_db_object.Get_Current_Group_Id()
-        self.sup_lock = threading.Lock()
+        self.sup_lock = threading.Lock()    
         self.client_dic_lock = threading.Lock()
         self.temp_recconect_dic_lock = threading.Lock()
         self.group_id_counter_lock = threading.Lock()

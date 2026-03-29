@@ -44,7 +44,8 @@ class Client(QThread):
         self.in_group = 0
 
     def Connect_To_Server(self):
-        self.client_socket.connect(('127.0.0.1',6666))
+        #self.client_socket.connect(('127.0.0.1',6666))
+        self.client_socket.connect(('10.100.102.8',6666))
         self.connected = True
         dh, pk = Cipher.get_dh_public_key()
         self.client_socket.send(pk)
