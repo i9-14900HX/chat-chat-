@@ -9,5 +9,8 @@ helpful material/
 
 Cyber Project Code/audio_recordings_wav*/
 Cyber Project Code/audio_recordings_wav/
+**/audio_recordings_wav*/
+**/__pycache__/
+
 
 Cyber Project Code/__pycache__/
