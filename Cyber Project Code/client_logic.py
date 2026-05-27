@@ -1,16 +1,11 @@
 import socket
 import threading
-import time
-from pathlib import Path
 from cipher import *
 from constants import *
-from audio_recorder import *
-from Header_packer_and_unpacker import *
+from Header_Manager import *
 import math
 from queue import Queue
 import DB_file
-from tqdm import tqdm
-from audio_player import *
 from PyQt6.QtCore import QThread, pyqtSignal
 
 # from audio_recorder import Recorder
@@ -128,7 +123,7 @@ class Client(QThread):
             recv_data_from_server_and_Handle_thread.start()
             queue_thread = threading.Thread(target= self.Send_By_Queue)
             queue_thread.start()
-    
+    '''
     def recv_data_from_client(self): 
         self.DB_object_client_recvr = DB_file.DB_Class_Specific(self.username)
         self.player_object = Audio_player()
@@ -207,7 +202,7 @@ class Client(QThread):
             else:
                 msg_AES = self.Client_string_message(input_in_string, self.in_group)
                 self.Send_Server_simple(msg_AES)
-    
+    '''
     '''
     def Handle_data_str_message(self, meta_data_type, data_AES):
         full_meta_data, meta_data_length_int = self.Generate_meta_data_by_method(data_AES, meta_data_type, "AES")
@@ -303,6 +298,7 @@ class Client(QThread):
                 pass
             else:
             '''
+    '''
     def Start_recording(self):
         self.recorder_class_object = Recorder()
         self.recorder_class_object.Start_Recording_thread = threading.Thread(target = self.recorder_class_object.Start_Recording)
@@ -323,6 +319,7 @@ class Client(QThread):
             #full_audio_recording_AES = self.cipher.aes_encrypt(full_audio_recording_bytes)
             return full_audio_recording_bytes
     
+    '''
     def Client_string_message(self, string_message, group_id):
             
             msg_type_str = "str"
@@ -346,6 +343,7 @@ class Client(QThread):
             self.Send_Server_simple(msg)
             #print(data_AES_To_Server)
             #self.client_socket.send(data_AES_To_Server)
+
     def Send_Server_simple(self, msg_AES):
         self.message_queue.put(msg_AES)
         #self.client_socket.send(msg_AES)

@@ -1,26 +1,23 @@
 import math
 import socket
-from pathlib import Path
 import threading
 from cipher import *
 from constants import *
-from Header_packer_and_unpacker import *
-import struct 
-import os 
-import soundfile as sf
-import numpy as np
+from Header_Manager import *
 import DB_file 
 from queue import Queue
 import time
 
 class Server:
     def __init__(self):
+        '''
         self.file_path = Path(__file__).resolve()
         self.folder_path = self.file_path.parent
         self.audio_dir = self.folder_path / "audio_recordings_wav"
         self.audio_dir_str = str(self.audio_dir)
         self.audio_dir.mkdir(parents=True, exist_ok=True)
         self.username_password_salt_db = str(self.folder_path / "username_password_salt_db.db")
+        '''
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.bind(('10.100.102.8', 6666))
         server.listen(100) 
@@ -544,7 +541,7 @@ class Server:
                                 msg_AES = header_AES + log_answer_AES
 
                                 self.client_dic[user][0].put(msg_AES)
-
+                                
                 elif msg_type_str == "rmv":
                     data_AES = self.recv_exact(client_socket, payload_len)
                     data_bytes = cipher.aes_decrypt(data_AES)

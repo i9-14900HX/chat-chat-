@@ -1,4 +1,3 @@
-import os
 import struct 
 from constants import *
 from datetime import datetime

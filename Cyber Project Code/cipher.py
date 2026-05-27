@@ -1,4 +1,3 @@
-import random
 #pip install pycryptodome
 from Crypto.Cipher import AES
 #pip install py-diffie-hellman
@@ -34,21 +33,24 @@ class Cipher:
 
 if __name__ == "__main__":
 
+    
     text = b"hello world 1234567"
     PUBLIC_KEY = b"it is my secret password"
     NONCE = b"better to try than not try"
-    print("start text:", text)
+    #print("start text:", text)
 
     c1 = Cipher(PUBLIC_KEY, NONCE)
     encrypted_text = c1.aes_encrypt(text)
     c2 = Cipher(PUBLIC_KEY, NONCE)
     message = c2.aes_decrypt(encrypted_text)
-    print("after text: ", message)
+    #print("after text: ", message)
 
     dh1, dh1_public = Cipher.get_dh_public_key()
     dh2, dh2_public = Cipher.get_dh_public_key()
 
     sk1 = Cipher.get_dh_shared_key(dh1, dh2_public)
     sk2 = Cipher.get_dh_shared_key(dh2, dh1_public)
-    print("shared key 1: ", sk1)
-    print("shared key 2: ", sk2)
+    #print("shared key 1: ", sk1)
+    #print("shared key 2: ", sk2)
+    
+    print(f"private: {dh1} public: {dh1_public}")

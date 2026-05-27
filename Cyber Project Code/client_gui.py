@@ -6,8 +6,8 @@ from PyQt6.QtWidgets import QApplication, QListWidget, QSizePolicy, QWidget, QPu
 from PyQt6.QtCore import QThread, QTime, QTimer, pyqtSignal, Qt
 from PyQt6.QtGui import QBrush, QTextCursor, QIcon, QPixmap, QTextCharFormat, QTextFormat, QColor
 
-from clienttest import Client
-from recorder_pyqt_gui import Recorder
+from client_logic import Client
+from audio_recorder_Qthread import Recorder
 import audio_player as ap
 from DB_file import DB_Class_Specific
 '''
