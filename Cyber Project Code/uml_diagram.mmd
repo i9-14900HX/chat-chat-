@@ -55,6 +55,38 @@ classDiagram
         +get_dh_shared_key(dh_1, pk_2, lngth=32)
     }
 
+    class Constants {
+        +NONCE
+        +HEADER_FORMAT
+        +HEADER_SIZE
+        +USERNAME_SIZE
+        +STR
+        +WAV
+        +ACK
+        +REQ
+        +ANS
+        +SIN
+        +SUP
+        +CRT
+        +ADD
+        +RMV
+        +CHUNK_MAX_SIZE
+        +CHUNK_DATA_MAX_SIZE
+        +SERVER_HOST
+        +SERVER_PORT
+        +GENERAL_DB_FILENAME
+        +SPECIFIC_DB_FILENAME_TEMPLATE
+        +AUDIO_DIR
+        +HASH_ALGORITHM
+        +HASH_ITERATIONS
+        +HASH_SALT_SIZE
+    }
+
+    class Hashing {
+        +hash_new_password(password)
+        +is_correct_password(salt, pw_hash, password)
+    }
+
     class Header_Manager {
         +Pack_Header(msg_type_str, msg_id, chunk_idx, total_chunks, payload_len, username_str, group_id)
         +UnPack_Header(header)
@@ -81,15 +113,45 @@ classDiagram
     class Lib_socket
     class Lib_threading
     class Lib_math
+    class Lib_queue
+    class Lib_pyqt6
+    class Lib_struct
+    class Lib_datetime
+    class Lib_sqlite3
+    class Lib_pathlib
+    class Lib_soundfile
+    class Lib_numpy
+    class Lib_hashlib
+    class Lib_hmac
+    class Lib_os
+    class Lib_pycryptodome
+    class Lib_diffiehellman
 
     QThread <|-- Client
     Client ..> Cipher : uses
     Client ..> Header_Manager : uses
     Client ..> DB_Class_Specific : uses
+    Client ..> Constants : uses
     Client ..> Lib_socket : uses
     Client ..> Lib_threading : uses
     Client ..> Lib_math : uses
-    Client ..> Queue : uses
+    Client ..> Lib_queue : uses
+    Client ..> Lib_pyqt6 : uses
+    Cipher ..> Lib_pycryptodome : uses
+    Cipher ..> Lib_diffiehellman : uses
+    Header_Manager ..> Constants : uses
+    Header_Manager ..> Lib_struct : uses
+    Header_Manager ..> Lib_datetime : uses
+    DB_Class_Specific ..> Constants : uses
+    DB_Class_Specific ..> Lib_sqlite3 : uses
+    DB_Class_Specific ..> Lib_pathlib : uses
+    DB_Class_Specific ..> Lib_soundfile : uses
+    DB_Class_Specific ..> Lib_numpy : uses
+    DB_Class_Specific ..> Lib_threading : uses
+    DB_Class_Specific ..> Hashing : uses
+    Hashing ..> Lib_hashlib : uses
+    Hashing ..> Lib_hmac : uses
+    Hashing ..> Lib_os : uses
 
 classDiagram
     %% Client GUI (client_gui.py)
@@ -202,6 +264,38 @@ classDiagram
         +stop()
     }
 
+    class Constants {
+        +NONCE
+        +HEADER_FORMAT
+        +HEADER_SIZE
+        +USERNAME_SIZE
+        +STR
+        +WAV
+        +ACK
+        +REQ
+        +ANS
+        +SIN
+        +SUP
+        +CRT
+        +ADD
+        +RMV
+        +CHUNK_MAX_SIZE
+        +CHUNK_DATA_MAX_SIZE
+        +SERVER_HOST
+        +SERVER_PORT
+        +GENERAL_DB_FILENAME
+        +SPECIFIC_DB_FILENAME_TEMPLATE
+        +AUDIO_DIR
+        +HASH_ALGORITHM
+        +HASH_ITERATIONS
+        +HASH_SALT_SIZE
+    }
+
+    class Hashing {
+        +hash_new_password(password)
+        +is_correct_password(salt, pw_hash, password)
+    }
+
     class QWidget
     class QThread
     class Client
@@ -209,6 +303,9 @@ classDiagram
     class Lib_sys
     class Lib_re
     class Lib_threading
+    class Lib_hashlib
+    class Lib_hmac
+    class Lib_os
 
     QThread <|-- ClientWorker
     ClientWorker ..> Client : uses
@@ -225,6 +322,11 @@ classDiagram
     LoginWindow ..> Lib_sys : uses
     LoginWindow ..> Lib_re : uses
     ChatWindow ..> Lib_sys : uses
+    Client ..> Constants : uses
+    Client ..> Hashing : uses
+    Hashing ..> Lib_hashlib : uses
+    Hashing ..> Lib_hmac : uses
+    Hashing ..> Lib_os : uses
 
 classDiagram
     %% Server (server.py)
@@ -244,7 +346,6 @@ classDiagram
         +users_set_lock
         +__init__()
         +recv_exact(sock, nbytes)
-        +Handle_Client_Data(meta_data_type_bytes, meta_data_len_int, client_socket, cipher)
         +Send_Client_By_Q(queue, socket, socket_lock, ack_evnt)
         +Single_Client_With_Thread(client_socket, address)
     }
@@ -305,12 +406,71 @@ classDiagram
     class Lib_threading
     class Lib_math
     class Lib_time
+    class Lib_struct
+    class Lib_datetime
+    class Lib_pycryptodome
+    class Lib_diffiehellman
+    class Lib_hashlib
+    class Lib_hmac
+    class Lib_os
+
+    class Constants {
+        +NONCE
+        +HEADER_FORMAT
+        +HEADER_SIZE
+        +USERNAME_SIZE
+        +STR
+        +WAV
+        +ACK
+        +REQ
+        +ANS
+        +SIN
+        +SUP
+        +CRT
+        +ADD
+        +RMV
+        +CHUNK_MAX_SIZE
+        +CHUNK_DATA_MAX_SIZE
+        +SERVER_HOST
+        +SERVER_PORT
+        +GENERAL_DB_FILENAME
+        +SPECIFIC_DB_FILENAME_TEMPLATE
+        +AUDIO_DIR
+        +HASH_ALGORITHM
+        +HASH_ITERATIONS
+        +HASH_SALT_SIZE
+    }
+
+    class Hashing {
+        +hash_new_password(password)
+        +is_correct_password(salt, pw_hash, password)
+    }
+
+    class Lib_sqlite3
+    class Lib_pathlib
+    class Lib_soundfile
+    class Lib_numpy
 
     Server ..> Cipher : uses
     Server ..> Header_Manager : uses
     Server ..> DB_Class_General : uses
+    Server ..> Constants : uses
     Server ..> Queue : uses
     Server ..> Lib_socket : uses
     Server ..> Lib_threading : uses
     Server ..> Lib_math : uses
     Server ..> Lib_time : uses
+    Cipher ..> Lib_pycryptodome : uses
+    Cipher ..> Lib_diffiehellman : uses
+    Header_Manager ..> Lib_struct : uses
+    Header_Manager ..> Lib_datetime : uses
+    DB_Class_General ..> Hashing : uses
+    DB_Class_General ..> Constants : uses
+    DB_Class_General ..> Lib_sqlite3 : uses
+    DB_Class_General ..> Lib_pathlib : uses
+    DB_Class_General ..> Lib_soundfile : uses
+    DB_Class_General ..> Lib_numpy : uses
+    DB_Class_General ..> Lib_threading : uses
+    Hashing ..> Lib_hashlib : uses
+    Hashing ..> Lib_hmac : uses
+    Hashing ..> Lib_os : uses

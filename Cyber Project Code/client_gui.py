@@ -10,13 +10,7 @@ from client_logic import Client
 from audio_recorder_Qthread import Recorder
 import audio_player as ap
 from DB_file import DB_Class_Specific
-'''
-class LoginGui(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.client = Client()
-'''        
-import sys
+
 from PyQt6.QtWidgets import (QApplication, QWidget, QLabel, QLineEdit, 
                              QPushButton, QVBoxLayout, QHBoxLayout, QMessageBox)
 
@@ -113,6 +107,10 @@ class LoginWindow(QWidget):
         if not username.isalnum():
             QMessageBox.warning(self, 'שגיאה', 'שם המשתמש יכול להכיל רק אותיות ומספרים')
             return
+        
+        if bool(re.search(r'[\u0590-\u05FF]', username)):
+            QMessageBox.warning(self, 'שגיאה', 'שם המשתמש לא יכול להכיל אותיות בעברית')
+            return
 
         if len(password) < 3 or len(password) > 16:
             QMessageBox.warning(self, 'שגיאה', 'אנא הזן סיסמה בין 3 ל-16 תווים')
@@ -120,6 +118,10 @@ class LoginWindow(QWidget):
 
         if not password.isalnum():
             QMessageBox.warning(self, 'שגיאה', 'הסיסמה יכולה להכיל רק אותיות ומספרים')
+            return
+
+        if bool(re.search(r'[\u0590-\u05FF]', password)):
+            QMessageBox.warning(self, 'שגיאה', 'הסיסמה לא יכולה להכיל אותיות בעברית')
             return
 
         self.btn_login.setEnabled(False)
@@ -155,17 +157,7 @@ class LoginWindow(QWidget):
                 # self.open_main_app() 
         else:
              QMessageBox.critical(self, "שגיאה", message)
-'''             
-class RetriveGroupInfo(QThread):
-    group_info_signal = pyqtSignal(list)
 
-    def __init__(self):
-        super().__init__()
-        self.DB = DB_Class_Specific()
-
-    def run(self):
-        group_id_and_name_list = self.DB.Get_Groups()
-'''
     
 class ChatWindow(QWidget):
     audio_finished_signal = pyqtSignal(object)
@@ -184,7 +176,7 @@ class ChatWindow(QWidget):
         self.audio_player_object = ap.Audio_player() # האובייקט שלך
         self.current_playing_button = None
 
-        self.record_timer = QTimer()
+        self.record_timer = QTimer() 
         self.record_timer.timeout.connect(self.update_timer_display)
         self.elapsed_time = QTime(0, 0, 0)
 
@@ -211,32 +203,6 @@ class ChatWindow(QWidget):
         # === לייאאוט ראשי: מחלק את המסך לימין (קבוצות) ושמאל (אזור הצ'אט) ===
         main_layout = QHBoxLayout()
         
-        '''
-        right_panel_layout = QVBoxLayout()  #*
-
-        self.input_new_group_name = QLineEdit() #*
-        self.input_new_group_name.setPlaceholderText("הכנס שם קבוצה...") #*
-        
-        self.input_new_group_members = QLineEdit() #*
-        self.input_new_group_members.setPlaceholderText("הכנס חברי קבוצה (מופרדים ברווח)...") #*
-        
-        self.btn_create_group = QPushButton("צור קבוצה") #*
-        self.btn_create_group.clicked.connect(self.create_group_logic) # חיבור לפונקציית יצירה #*
-
-        # --- צד ימין: רשימת קבוצות ---
-        self.groups_list = QListWidget()
-        self.groups_list.setFixedWidth(220)
-        # חיבור לחיצה על קבוצה לפונקציה
-        self.groups_list.itemClicked.connect(self.on_group_selected)
-
-        right_panel_layout.addWidget(QLabel("<b>יצירת קבוצה חדשה:</b>")) #*
-        right_panel_layout.addWidget(self.input_new_group_name) #*
-        right_panel_layout.addWidget(self.input_new_group_members) #*
-        right_panel_layout.addWidget(self.btn_create_group) #*
-        right_panel_layout.addSpacing(10) # רווח קטן בין היצירה לרשימה #*
-        right_panel_layout.addWidget(QLabel("<b>הקבוצות שלי:</b>")) #*
-        right_panel_layout.addWidget(self.groups_list) #*
-        '''
         right_panel_layout = QVBoxLayout()
         right_panel_layout.setSpacing(5) # רווח קטן בין האלמנטים
         right_panel_layout.setContentsMargins(10, 0, 10, 0) # שוליים פנימיים
@@ -314,7 +280,7 @@ class ChatWindow(QWidget):
     QScrollArea { border: none; background-color: #2b2b2b; }
     QWidget { background-color: #2b2b2b; color: white; }
 """)
-
+        
         self.chat_container = QWidget()
         self.chat_layout = QVBoxLayout(self.chat_container) # הלייאאוט שבו נשים את ההודעות
         self.chat_layout.setAlignment(Qt.AlignmentFlag.AlignTop) # מצמיד הודעות למעלה
@@ -792,152 +758,7 @@ class ChatWindow(QWidget):
         if max_position - current_position < 100:
             # השהייה קטנה כדי לתת ל-Layout זמן להתעדכן
             QTimer.singleShot(50, lambda: bar.setValue(bar.maximum()))
-    '''
-    def add_text_message_to_gui(self, sender, message_text, msg_id, group_id)
-                                
-        if group_id != self.in_group_gui:
-            return
 
-        # 1. יצירת תווית טקסט
-        time_str = self.format_msg_id(msg_id)
-        msg_label = QLabel(f"<b>{time_str} {sender} sent:</b> {message_text}")
-        
-        # 2. מאפשרים לטקסט להישבר לכמה שורות אם הוא ארוך
-        msg_label.setWordWrap(True)
-        
-        # 3. הוספה ל-Layout של הצ'אט
-        self.chat_layout.addWidget(msg_label)
-        
-        # 4. גלילה אוטומטית למטה
-        #self.scroll_to_bottom()
-    
-    '''
-    '''    
-    def add_audio_message_to_gui(self, sender, msg_id, group_id, filepath):
-        """מוסיף הודעה קולית לצ'אט עם כפתור שמקושר לנתיב הקובץ ב-DB"""
-        # בדיקה אם ההודעה שייכת לקבוצה שמוצגת כרגע
-        if group_id != self.in_group_gui:
-            return
-
-        # 1. הוספת שם השולח וזמן (אופציונלי)
-        time = self.format_msg_id(msg_id)
-        self.chat_display.append(f"{time} {sender} sent: voice recording - ")
-        
-        # 2. יצירת הכפתור
-        play_btn = QPushButton(" ▶ השמע הודעה ")
-        play_btn.setFixedWidth(140)
-        play_btn.setStyleSheet("""
-            QPushButton { 
-                background-color: #e1f5fe; 
-                border-radius: 5px; 
-                padding: 5px; 
-                font-weight: bold;
-            }
-            QPushButton:hover { background-color: #b3e5fc; }
-        """)
-
-        # 3. חיבור הכפתור לפונקציית הניגון עם הנתיב מה-DB
-        play_btn.clicked.connect(lambda: self.play_audio_logic(filepath))
-        
-        # 4. הכנסת הכפתור לתוך ה-QTextEdit בסוף הטקסט
-
-        if group_id != self.in_group_gui:
-            return
-
-        
-        
-        cursor = self.chat_display.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        #self.chat_display.setTextCursor(cursor)
-        
-        self.chat_display.setReadOnly(False)
-        self.chat_display.addWidget(play_btn)
-        
-        self.chat_display.insertHtml("<br><br>") # רווח בין הודעות
-        self.chat_display.setReadOnly(True)
-        
-        # גלילה אוטומטית להודעה החדשה
-        self.chat_display.setTextCursor(cursor)
-        self.chat_display.ensureCursorVisible()
-        
-        #self.chat_diplay.setReadOnly(False)
-        
-        #cursor = self.chat_display.textCursor()
-        #cursor.movePosition(QTextCursor.MoveOperation.End)
-        
-        # --- הטריק: יצירת Inline Widget בתוך הטקסט ---
-        # משתמשים ב-layout של המסמך כדי להוסיף את הווידג'ט
-        #self.chat_display.setTextCursor(cursor)
-        
-        # ב-PyQt6 הדרך הכי יציבה להוסיף ווידג'ט ל-QTextEdit היא זו:
-        # אנחנו יוצרים "פורמט אובייקט" או פשוט משתמשים ב-insertWidget מה-cursor אם הייבוא נכון
-        # אם ה-cursor.insertWidget נתן AttributeError קודם, זה בגלל גרסת ה-Qt.
-        # הנה הפתרון העוקף:
-        
-        #cursor.insertText(" ") # רווח קטן לפני
-        #self.chat_display.setReadOnly(False)
-        
-        # הוספת הכפתור כ-child של ה-chat_display
-        #play_btn.setParent(self.chat_display) 
-        
-        # הזרקת ה-Widget למיקום הסמן
-        #cursor.insertWidget(play_btn) 
-        
-        # ----------------------------------------
-        #cursor = self.chat_display.textCursor()
-        #cursor.movePosition(QTextCursor.MoveOperation.End)
-    
-    # זו הפקודה הקריטית - היא תעבוד אם ה-Import של QTextCursor תקין
-        #cursor.insertWidget(play_btn)
-
-        #self.chat_display.insertHtml("<br><br>") 
-        cursor = self.chat_display.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-    
-    # הוספת הכפתור כ-Child של ה-Chat Display
-        play_btn.setParent(self.chat_display)
-    
-    # פקודת הקסם של PyQt6:
-    # במקום insertWidget של ה-Cursor, משתמשים בזה:
-        self.chat_display.insertWidget(play_btn) 
-    
-    # ירידת שורה
-        self.chat_display.append("")
-        self.chat_display.setReadOnly(True)
-        
-        self.chat_display.ensureCursorVisible()
-    '''
-    '''
-    def play_audio_logic(self, filepath):
-        """מנהלת את הניגון והחלפת מצבי הכפתורים"""
-        clicked_button = self.sender()
-
-        # א. אם לחצו על כפתור שכבר מנגן - עוצרים הכל
-        if clicked_button.text() == " ■ עצור ניגון ":
-            self.audio_player_object.stop()
-            clicked_button.setText(" ▶ השמע הודעה ")
-            self.current_playing_button = None
-            return
-
-        # ב. אם יש כפתור אחר שמנגן כרגע - מחזירים אותו למצב רגיל
-        if self.current_playing_button is not None:
-            try:
-                self.current_playing_button.setText(" ▶ השמע הודעה ")
-            except:
-                pass 
-
-        # ג. עדכון הכפתור הנוכחי למצב "מנגן"
-        clicked_button.setText(" ■ עצור ניגון ")
-        self.current_playing_button = clicked_button
-
-        # ד. הפעלת הניגון בת'רד נפרד
-        # ה-audio_player_object שלך כבר עושה sd.stop() בפנים, אז הוא יקטע את הקודם
-        threading.Thread(
-            target=self._play_thread_worker, 
-            args=(filepath, clicked_button), 
-            daemon=True
-        ).start()
-    '''
     def play_audio_logic(self, filepath, clicked_button):
         """מנהלת את הניגון והחלפת מצבי הכפתורים"""
         
@@ -975,21 +796,7 @@ class ChatWindow(QWidget):
         except:
             pass
     
-    '''
-    def _play_thread_worker(self, filepath, button):
-        """מריץ את הקובץ ומחכה לסיום כדי לאפס את ה-UI"""
-        # קריאה לפונקציה המקורית שלך
-        self.audio_player_object.Play_Audio_By_File(filepath)
-        
-        # המתנה לסיום הניגון (מבלי לתקוע את ה-GUI)
-        import sounddevice as sd
-        sd.wait() 
-        
-        # ה. החזרת הכפתור למצב "נגן" רק אם הוא עדיין הכפתור הפעיל
-        if self.current_playing_button == button:
-            button.setText(" ▶ השמע הודעה ")
-            self.current_playing_button = None
-    '''
+   
     def _play_thread_worker(self, filepath, button):
         """מריץ את הקובץ ושולח סיגנל לסיום"""
         try:

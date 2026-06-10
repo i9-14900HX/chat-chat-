@@ -8,10 +8,7 @@ from queue import Queue
 import DB_file
 from PyQt6.QtCore import QThread, pyqtSignal
 
-# from audio_recorder import Recorder
-class My_Error(Exception):
-    #לעבוד על custom exceptions, לראות raise | except | try | finally | as e . נראה מגניב ביותר  
-    pass
+
 class Client(QThread):
 
     new_message_signal = pyqtSignal(str, str, str, int)  # msg_id, username, message, group_id
@@ -504,21 +501,7 @@ class Client(QThread):
         print(f"create group command: {command}")
         _ , group_id , usernames , group_name = command.split(".", 3)
 
-        '''
-        origin_group_name = group_name
-        group_unique_name_progressive_index = 1
-        group_exist = True
-        with self.not_duplicate_group:
-            if self.DB_object_server_recvr.Is_Group_Exist(group_name):
-                while group_exist:
-                    group_name_new = group_name + f" ({group_unique_name_progressive_index})"  
-                    if not self.DB_object_server_recvr.Is_Group_Exist(group_name_new):
-                        group_name = group_name_new
-                        group_exist = False
-                    else:
-                        group_unique_name_progressive_index += 1
-                print(f"{origin_group_name} name taken, new name: {group_name}")
-        '''
+
 
         print(f"creating group in client, {group_id} {usernames} {group_name}")
         self.DB_object_server_recvr.Create_Group(group_id, usernames, group_name)
@@ -601,58 +584,7 @@ class Client(QThread):
             pass # הסוקט כבר סגור
         
         print("Client socket closed.")
-            
 
-
-    '''
-    def Send_Server(self, data_AES, meta_data_AES, data_len_int):
-        self.ack = False
-        bytes_sent = 0
-        chunk_max_size = 1024
-        chunk_offset = 0
-        self.client_socket.send(meta_data_AES)
-        while bytes_sent < data_len_int:
-            self.is_ack.clear()
-            self.ack = False
-            chunk = data_AES[chunk_offset:chunk_offset + chunk_max_size]
-            self.client_socket.send(chunk)
-            chunk_offset += 1024
-            bytes_sent += 1024
-            if bytes_sent > data_len_int:
-                bytes_sent = data_len_int
-            print(f"{bytes_sent/data_len_int*100}% sent")
-            self.is_ack.wait()
-           # here = self.client_socket.recv(4)
-           # print(self.cipher.aes_decrypt(here).decode() + "got here")
-
-
-    
-            
-    def Generate_meta_data_by_method(self, data_AES, data_type_str, method):
-            meta_data_length_int = len(data_AES)
-            meta_data_length_str = str(meta_data_length_int)
-            meta_data_str = data_type_str + meta_data_length_str 
-            if method == "str":
-                return meta_data_str, meta_data_length_int
-            meta_data_length_byte = meta_data_length_int.to_bytes(4, 'big')
-            data_type_bytes = data_type_str.encode()
-            meta_data_bytes = data_type_bytes + meta_data_length_byte
-            if method == "bytes":
-                return meta_data_bytes, meta_data_length_int
-            meta_data_aes = self.cipher.aes_encrypt(meta_data_bytes)
-            if method == "AES":
-                return meta_data_aes, meta_data_length_int
-            print("oh no... get back to work")
-
-    
-   def Ping_Server(self):
-        while self.connected:
-            ping = "<Client_Pinging_Server_Do_Not_Kick>"
-            ping_bytes = ping.encode()
-            ping_AES = self.cipher.aes_encrypt(ping_bytes)
-            self.client_socket.send(ping_AES)
-            time.sleep(5) 
-    '''
 #if __name__ == "__main__": 
 
 

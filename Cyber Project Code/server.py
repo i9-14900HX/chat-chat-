@@ -10,14 +10,6 @@ import time
 
 class Server:
     def __init__(self):
-        '''
-        self.file_path = Path(__file__).resolve()
-        self.folder_path = self.file_path.parent
-        self.audio_dir = self.folder_path / "audio_recordings_wav"
-        self.audio_dir_str = str(self.audio_dir)
-        self.audio_dir.mkdir(parents=True, exist_ok=True)
-        self.username_password_salt_db = str(self.folder_path / "username_password_salt_db.db")
-        '''
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.bind(('10.100.102.8', 6666))
         server.listen(100) 
@@ -54,23 +46,6 @@ class Server:
                 raise ConnectionError("Socket closed while receiving data")
             data.extend(chunk)
         return bytes(data)
-
-    def Handle_Client_Data(self, meta_data_type_bytes, meta_data_len_int, client_socket, cipher):
-        zero = 0
-        ack_message = b'<ACK>'+zero.to_bytes(4, 'big')
-        bytes_left = meta_data_len_int
-        rounds = 0
-        aes_data = b''
-        while bytes_left != 0:
-            try:
-                recv_index = min(1024, bytes_left)
-                aes_data += client_socket.recv(recv_index)
-                rounds += 1 
-                bytes_left-= recv_index
-                client_socket.send(cipher.aes_encrypt(ack_message))
-            except (ConnectionResetError, BrokenPipeError): #except (socket.timeout, ConnectionResetError, BrokenPipeError):
-                raise
-        return cipher.aes_decrypt(aes_data)
     
     def Send_Client_By_Q(self, queue, socket, socket_lock, ack_evnt):
         try: 
@@ -630,28 +605,6 @@ class Server:
                 ack_msg_AES = cipher.aes_encrypt(ack_msg)
                 with socket_lock:
                     client_socket.send(ack_msg_AES)    
-
-                    
-                    #for i, chunk in enumerate(data_bytes):
-                    #    print(f"Chunk {i}: {chunk}")
-                    '''
-                    arrays = [np.frombuffer(chunk, dtype=np.float32) for chunk in data_bytes]
-
-                    
-                    # מחברים את כל הצ'אנקים למערך רציף אחד
-                    full_audio = np.concatenate(arrays)
-
-                    # שם הקובץ כולל index
-                    filename = self.audio_dir / f"recording{msg_id}.wav"
-                    
-                    # שומרים את הקובץ
-                    sf.write(filename, full_audio, 44100)
-                    print("Saved WAV:", filename)
-
-                    del msg_id_dic[msg_id]
-                    '''                
-
-
                     continue
                 
             except(ConnectionResetError, BrokenPipeError, ConnectionError, OSError): #except (socket.timeout, ConnectionResetError, BrokenPipeError):
@@ -667,31 +620,5 @@ class Server:
                 self.users_set.discard(name)
 
                 break
-            '''
-            if client_ping_bytes == data_in_bytes_From_One:
-                #print("true")
-                continue
-            elif client_ping_bytes in data_in_bytes_From_One:
-                data_in_bytes_From_One = data_in_bytes_From_One.removeprefix(client_ping_bytes)
-                data_in_bytes_From_One = data_in_bytes_From_One.removesuffix(client_ping_bytes)
-            
-            for client_list_socket, cipher_list in self.clients_list:
-                if client_list_socket == client_socket:
-                    continue
-                data_in_Aes_For_All = cipher_list.aes_encrypt(data_bytes)
-                header_in_Aes_For_All = cipher_list.aes_encrypt(header)
-                #print("False")
-                msg_for_all_AES = header_in_Aes_For_All + data_in_Aes_For_All
-                client_list_socket.send(msg_for_all_AES) 
-            '''
-Server()
 
-'''
-                meta_data_and_data_AES_From_One=client_socket.recv(1024)
-                meta_data_AES = meta_data_and_data_AES_From_One[:9]
-                meta_data_bytes = cipher.aes_decrypt(meta_data_AES)
-                meta_data_type_bytes, meta_data_len_int = meta_data_bytes[:5], int.from_bytes(meta_data_bytes[5:], 'big')
-                data_AES_From_One = meta_data_and_data_AES_From_One[9:]
-                data_in_bytes_From_One = cipher.aes_decrypt(data_AES_From_One)
-                data_in_str_From_One = data_in_bytes_From_One.decode()
-'''
+Server()

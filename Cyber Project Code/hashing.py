@@ -25,6 +25,7 @@ class HashPasswords:
 if __name__=='__main__':
     hash_passwords=HashPasswords()
     salt, pw_hash = hash_passwords.hash_new_password('correct horse battery staple')
+    print(pw_hash, salt)
     salt2, pw_hash2 = hash_passwords.hash_new_password('password2')
     print(hash_passwords.is_correct_password(salt, pw_hash, 'correct horse battery staple'))
     print(hash_passwords.is_correct_password(salt2, pw_hash2, 'password2'))

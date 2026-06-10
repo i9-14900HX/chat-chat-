@@ -446,5 +446,6 @@ if __name__=='__main__':
     #db.Save_user_and_pass("yossi", "1234")
     #db.Create_Group(1, "moshe|dina|yossi|")
     #db.Print_Group()
-    db.Print_messages()
-    db.print_connect_messages()
+    #db.Print_messages()
+    #db.print_connect_messages()
+    db.Print_Group()

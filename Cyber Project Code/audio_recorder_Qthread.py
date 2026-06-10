@@ -11,7 +11,7 @@ class Recorder(QObject):
     def callback(self, indata, frames, time, status):
         if status:
             print(f"Warning: {status}")
-        self.recorded_frames.append(indata.copy())
+        self.recorded_frames.append(indata.copy()) 
 
     def Start_Recording(self):
         
@@ -24,7 +24,7 @@ class Recorder(QObject):
             time.sleep(0.01)
             
         # לוגיקת הסיום (בתוך ה-Thread)
-        time.sleep(0.3) 
+        time.sleep(0.3) #letting the stream finish processing and avoid cutting the end of the recording
         self.stream.stop()
         self.stream.close()
         self.is_force_close = False

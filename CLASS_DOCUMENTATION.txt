@@ -1,0 +1,934 @@
+================================================================================
+CLASS DOCUMENTATION - Cyber Project VoxLink
+================================================================================
+
+================================================================================
+CLASS 1: Cipher (cipher.py)
+================================================================================
+
+Class Name (English): Cipher
+
+▪ Class Role
+  The Cipher class handles all AES encryption/decryption operations using the EAX
+  mode, and manages Diffie-Hellman key exchange for secure communication between
+  client and server. It provides both instance-level encryption (with shared keys)
+  and static methods for key exchange.
+
+▪ Class Attributes
+  ● key
+    - Role: Stores the symmetric encryption key (32 bytes)
+    - Usage: Used by aes_encrypt and aes_decrypt methods to encrypt/decrypt data
+  
+  ● nonce
+    - Role: Stores the nonce (number used once) for AES-EAX mode
+    - Usage: Required by AES cipher to ensure uniqueness in encryption
+
+▪ Class Operations
+
+  ● __init__(key, nonce)
+    - Input Arguments: key (bytes), nonce (bytes)
+    - Output: Initializes the Cipher object with encryption parameters
+    - Functionality: Sets up the cipher with the provided key and nonce for future
+      encryption/decryption operations
+
+  ● aes_encrypt(txt)
+    - Input Arguments: txt (bytes) - plaintext data to encrypt
+    - Output: Returns encrypted ciphertext (bytes)
+    - Functionality: Encrypts the input bytes using AES-256 EAX mode; creates a new
+      cipher object for each operation to ensure security
+
+  ● aes_decrypt(cipher_text)
+    - Input Arguments: cipher_text (bytes) - encrypted data to decrypt
+    - Output: Returns decrypted plaintext (bytes)
+    - Functionality: Decrypts the input ciphertext using AES-256 EAX mode with the
+      stored key and nonce
+
+  ● get_dh_public_key() [STATIC]
+    - Input Arguments: None
+    - Output: Returns tuple (DiffieHellman object, public key bytes)
+    - Functionality: Generates a new Diffie-Hellman key pair using group 14 with
+      540-bit key strength for secure key exchange
+
+  ● get_dh_shared_key(dh_1, pk_2, lngth=32) [STATIC]
+    - Input Arguments: dh_1 (DiffieHellman object), pk_2 (bytes - peer's public key),
+      lngth (int - desired key length, default 32)
+    - Output: Returns shared secret key (bytes) of specified length
+    - Functionality: Computes the shared secret from own DH object and peer's public
+      key, returning only the first 'lngth' bytes
+
+================================================================================
+CLASS 2: HashPasswords (hashing.py)
+================================================================================
+
+Class Name (English): HashPasswords
+
+▪ Class Role
+  The HashPasswords class handles password hashing and verification using PBKDF2
+  with SHA-256 algorithm. It provides secure password storage by generating random
+  salts and comparing hashes for authentication.
+
+▪ Class Attributes
+  (This class has no instance attributes; all methods are instance methods without
+   state persistence)
+
+▪ Class Operations
+
+  ● hash_new_password(password)
+    - Input Arguments: password (str) - plaintext password to hash
+    - Output: Returns tuple (salt bytes, pw_hash bytes)
+    - Functionality: Generates a random 16-byte salt and computes PBKDF2-HMAC-SHA256
+      hash with 100,000 iterations; returns both for storage in the database
+
+  ● is_correct_password(salt, pw_hash, password)
+    - Input Arguments: salt (bytes), pw_hash (bytes - stored hash), 
+      password (str - user-provided password)
+    - Output: Returns boolean (True if password matches, False otherwise)
+    - Functionality: Hashes the provided password with the stored salt using same
+      algorithm and iteration count, then uses constant-time comparison (hmac.compare_digest)
+      to prevent timing attacks
+
+================================================================================
+CLASS 3: Client (client_logic.py)
+================================================================================
+
+Class Name (English): Client
+
+▪ Class Role
+  The Client class represents a connected user on the chat application. It inherits
+  from QThread and manages all client-side operations: connection to server, 
+  message sending/receiving, group management, voice recording handling, and user
+  interface signal emissions.
+
+▪ Class Attributes
+
+  ● new_message_signal
+    - Role: PyQt signal for new text messages
+    - Usage: Emitted when server sends new text message to GUI
+    - Signal parameters: (msg_id: str, username: str, message: str, group_id: int)
+
+  ● new_audio_signal
+    - Role: PyQt signal for new audio messages
+    - Usage: Emitted when server sends new audio message to GUI
+    - Signal parameters: (msg_id: str, username: str, file_path: str, group_id: int)
+
+  ● new_in_group
+    - Role: PyQt signal for group join notification
+    - Usage: Emitted when user joins or is added to a group
+    - Signal parameters: (group_name: str, group_id: int)
+
+  ● new_add_group
+    - Role: PyQt signal for new group creation
+    - Usage: Emitted when a new group is created on server
+    - Signal parameters: (group_id: int, users_string: str)
+
+  ● new_remv_group
+    - Role: PyQt signal for group removal
+    - Usage: Emitted when user is removed from a group
+    - Signal parameters: (group_id: int, group_name: str)
+
+  ● new_serversays_signal
+    - Role: PyQt signal for server announcements
+    - Usage: Emitted when server sends text announcements or status messages
+    - Signal parameters: (message: str)
+
+  ● client_socket
+    - Role: TCP socket connection to server
+    - Usage: Handles all network communication with server
+
+  ● connected
+    - Role: Boolean flag for connection status
+    - Usage: Tracks whether client is currently connected to server
+
+  ● cipher
+    - Role: Cipher object instance for encryption/decryption
+    - Usage: Encrypts outgoing data and decrypts incoming data
+
+  ● username
+    - Role: Current logged-in username
+    - Usage: Identifies the user in messages and group operations
+
+  ● password
+    - Role: User's password (temporary storage)
+    - Usage: Used during authentication; not permanently stored
+
+  ● socket_lock
+    - Role: Threading lock for socket access
+    - Usage: Prevents race conditions when multiple threads access socket
+
+  ● message_queue
+    - Role: Queue object for outgoing messages
+    - Usage: Stores messages to be sent to server; processed by Send_By_Queue thread
+
+  ● audio_data_dic
+    - Role: Dictionary storing incomplete audio messages
+    - Usage: Buffers audio chunks until complete message is assembled
+
+  ● in_group
+    - Role: Current group ID user is viewing/in
+    - Usage: Tracks which group messages should be sent to
+
+  ● default_group
+    - Role: Broadcast group ID (usually 0)
+    - Usage: Default group for system messages
+
+  ● DB_object_server_recvr
+    - Role: Database instance for storing received messages
+    - Usage: Persists messages received from server
+
+  ● is_ack
+    - Role: Threading event for acknowledgment signaling
+    - Usage: Waits for server ACK before sending next message
+
+▪ Class Operations
+
+  ● __init__()
+    - Input Arguments: None
+    - Output: Initializes Client object
+    - Functionality: Sets up socket, sets connected=False, calls QThread.__init__()
+
+  ● initialize_parameters()
+    - Input Arguments: None
+    - Output: None
+    - Functionality: Initializes all thread locks, queues, dictionaries, and group
+      tracking variables; called before starting communication
+
+  ● Connect_To_Server()
+    - Input Arguments: None
+    - Output: None
+    - Functionality: Connects socket to server (10.100.102.8:6666), performs DH key
+      exchange to establish shared encryption key, creates Cipher object
+
+  ● Get_in_Server(method, username, password)
+    - Input Arguments: method (str: "sin" for login or "sup" for signup), 
+      username (str), password (str)
+    - Output: Returns server response string (success or error message)
+    - Functionality: Constructs encrypted auth message, sends to server, receives
+      encrypted response, decrypts and returns it
+
+  ● Start_Client()
+    - Input Arguments: None
+    - Output: None
+    - Functionality: Initializes parameters and starts server logistics threads
+      (message receiving and queue-based sending)
+
+  ● format_msg_id(msg_id_str)
+    - Input Arguments: msg_id_str (str) - 18-digit timestamp ID from server
+    - Output: Returns formatted string (e.g., "26/01/11 - 15:20")
+    - Functionality: Converts server's 18-digit timestamp format to human-readable
+      date-time format; validates input is 18 digits
+
+  ● Send_By_Queue()
+    - Input Arguments: None
+    - Output: None
+    - Functionality: Thread loop that continuously retrieves messages from message_queue,
+      sends them via socket with thread-safe locking, waits for ACK signal with 5s timeout
+
+  ● Server_Logistics()
+    - Input Arguments: None
+    - Output: None
+    - Functionality: Spawns two threads: recv_data_from_server_and_Handle (receives
+      and processes incoming messages) and Send_By_Queue (sends queued messages)
+
+  ● recv_exact(nbytes)
+    - Input Arguments: nbytes (int) - number of bytes to receive
+    - Output: Returns bytes of exactly nbytes length
+    - Functionality: Loops recv() calls until exactly nbytes received; raises
+      ConnectionError if socket closes prematurely
+
+  ● recv_data_from_server_and_Handle()
+    - Input Arguments: None
+    - Output: None
+    - Functionality: Main receiving thread; continuously receives header+payload from
+      server, decrypts, unpacks, handles different message types (text, audio, group
+      operations, server announcements), emits appropriate signals
+
+  ● Client_string_message(string_message, group_id)
+    - Input Arguments: string_message (str), group_id (int)
+    - Output: Returns encrypted message bytes and metadata
+    - Functionality: Constructs text message with header, encrypts, prepares for sending
+
+  ● Send_Server_simple(msg_AES)
+    - Input Arguments: msg_AES (bytes) - pre-encrypted message
+    - Output: None
+    - Functionality: Adds encrypted message to queue for Send_By_Queue to process
+
+  ● send_server_recording(voice_recording_bytes, group_id)
+    - Input Arguments: voice_recording_bytes (bytes) - audio data, group_id (int)
+    - Output: None
+    - Functionality: Splits audio into CHUNK_DATA_MAX_SIZE chunks, sends each with
+      headers, waits for ACK on each chunk, retries on timeout
+
+  ● Create_Group_Send_Server_Msg(group_name, users_list)
+    - Input Arguments: group_name (str), users_list (list of usernames)
+    - Output: None
+    - Functionality: Creates message requesting group creation on server, sends to
+      server; locally creates group in database
+
+  ● Add_To_Group_Send_Server_Msg(message_raw, target_group)
+    - Input Arguments: message_raw (str) - user to add, target_group (int - group ID)
+    - Output: Tuple (status, message)
+    - Functionality: Constructs and sends message to add user to group; updates
+      local database and sends to server
+
+  ● Remove_From_Group_Send_Server_Msg(message_raw, target_group)
+    - Input Arguments: message_raw (str) - user to remove, target_group (int)
+    - Output: Tuple (status, message)
+    - Functionality: Constructs and sends message to remove user from group; updates
+      local database
+
+  ● Handle_Server_Ans(response_string)
+    - Input Arguments: response_string (str) - server response to parse
+    - Output: None
+    - Functionality: Parses server responses for group operations (create, add, remove),
+      emits appropriate signals for GUI updates
+
+================================================================================
+CLASS 4: Server (server.py)
+================================================================================
+
+Class Name (English): Server
+
+▪ Class Role
+  The Server class is the main server application that manages all connected clients,
+  handles authentication, manages group messaging, stores messages, and coordinates
+  message delivery between clients using encryption and threading.
+
+▪ Class Attributes
+
+  ● clients_currently_on
+    - Role: Counter for connected clients
+    - Usage: Tracks number of active client connections for logging/debugging
+
+  ● broadcast_id
+    - Role: ID for system broadcast messages
+    - Usage: Used for system-wide announcements
+
+  ● users_set
+    - Role: Set of currently connected usernames
+    - Usage: Prevents duplicate logins; tracks who is online
+
+  ● client_dic
+    - Role: Dictionary mapping username → (Queue, Cipher) tuple
+    - Usage: Stores message queue and cipher for each connected user
+
+  ● temp_recconect_dic
+    - Role: Dictionary for temporarily storing messages during reconnection
+    - Usage: Buffers messages if client disconnects and reconnects
+
+  ● place_holder_key
+    - Role: String constant for dict key placeholder
+    - Usage: Internal state management
+
+  ● group_id_counter
+    - Role: Counter for generating unique group IDs
+    - Usage: Ensures each group gets unique ID
+
+  ● sup_lock / client_dic_lock / temp_recconect_dic_lock / group_id_counter_lock / edit_group_lock / users_set_lock
+    - Role: Threading locks for thread-safe operations
+    - Usage: Prevents race conditions on shared data structures
+
+▪ Class Operations
+
+  ● __init__()
+    - Input Arguments: None
+    - Output: Initializes Server and starts listening for connections
+    - Functionality: Creates TCP socket, binds to 10.100.102.8:6666, creates locks,
+      initializes tracking dictionaries, enters infinite loop accepting client connections
+
+  ● recv_exact(sock, nbytes)
+    - Input Arguments: sock (socket), nbytes (int) - bytes to receive
+    - Output: Returns bytes of exactly nbytes length
+    - Functionality: Loops recv() until exactly nbytes received; raises ConnectionError
+      if connection closes prematurely
+
+  ● Send_Client_By_Q(queue, socket, socket_lock, ack_evnt)
+    - Input Arguments: queue (Queue), socket (socket), socket_lock (Lock), 
+      ack_evnt (Event)
+    - Output: None
+    - Functionality: Thread function that continuously gets messages from queue, sends
+      via socket with thread-safe locking, waits for ACK event
+
+  ● Single_Client_With_Thread(client_socket, address)
+    - Input Arguments: client_socket (socket), address (tuple - client IP/port)
+    - Output: None
+    - Functionality: Thread function handling individual client connection; performs
+      DH key exchange, handles authentication (login/signup), manages message receiving
+      and sending, handles group operations
+
+================================================================================
+CLASS 5: DB_Class_General (DB_file.py)
+================================================================================
+
+Class Name (English): DB_Class_General
+
+▪ Class Role
+  The DB_Class_General class manages the global database on server side, storing user
+  credentials with salted password hashes, group information, message history for all
+  users, and tracking message delivery status. It uses SQLite with WAL mode for
+  concurrent access.
+
+▪ Class Attributes
+
+  ● write_lock (CLASS VARIABLE)
+    - Role: Threading lock for database write operations
+    - Usage: Ensures thread-safe concurrent database access across all instances
+
+  ● file_path
+    - Role: Path to this Python file's location
+    - Usage: Base for calculating database file location
+
+  ● folder_path
+    - Role: Parent directory of this file
+    - Usage: Location where database and audio files are stored
+
+  ● audio_dir
+    - Role: Path object pointing to audio_recordings_wav folder
+    - Usage: Directory where audio message files are saved
+
+  ● audio_dir_str
+    - Role: String version of audio_dir path
+    - Usage: Used for file operations requiring string paths
+
+  ● general_data_base
+    - Role: Path to general_data_base.db file
+    - Usage: Main database connection path
+
+  ● conn
+    - Role: SQLite connection object
+    - Usage: Main database connection with WAL journal mode
+
+  ● c
+    - Role: SQLite cursor object
+    - Usage: Execute SQL queries and fetch results
+
+▪ Class Operations
+
+  ● __init__()
+    - Input Arguments: None
+    - Output: Initializes database connection and creates required tables
+    - Functionality: Locates database file, establishes connection with WAL mode,
+      creates tables: users (username, password, salt), messages (type, msg_id, 
+      username_str, group_id, header, content), connectmessages (delivery tracking),
+      groups (group_id, usernames_str)
+
+  ● save_user_and_pass(username, password)
+    - Input Arguments: username (str), password (str)
+    - Output: None
+    - Functionality: Uses HashPasswords to generate salt and hash, stores user with
+      thread lock for concurrency safety
+
+  ● username_exist(username)
+    - Input Arguments: username (str)
+    - Output: Returns boolean (True if exists, False otherwise)
+    - Functionality: Queries users table, iterates results to find matching username
+
+  ● check_password(username, password)
+    - Input Arguments: username (str), password (str)
+    - Output: Returns boolean (True if password correct, False otherwise)
+    - Functionality: Retrieves stored hash and salt for username, uses HashPasswords
+      to verify provided password against stored hash
+
+  ● print_table(table_name)
+    - Input Arguments: table_name (str) - name of table to print
+    - Output: Prints table contents to console
+    - Functionality: Executes SELECT * query and prints all rows
+
+  ● Save_audio_bytes_in_dir(bytes_array, msg_id)
+    - Input Arguments: bytes_array (list of bytes chunks), msg_id (str)
+    - Output: None
+    - Functionality: Converts byte chunks to numpy float32 array, concatenates,
+      saves as WAV file in audio_dir with name recording{msg_id}.wav
+
+  ● Get_voice_message_by_file(filename)
+    - Input Arguments: filename (str) - path to WAV file
+    - Output: Returns bytes of audio data
+    - Functionality: Reads WAV file as float32, converts to raw bytes
+
+  ● Create_Group(group_id, usernames_str)
+    - Input Arguments: group_id (int), usernames_str (str - pipe-separated usernames)
+    - Output: Returns (boolean success, string message)
+    - Functionality: Validates all usernames exist, inserts group into groups table
+      with thread lock
+
+  ● Get_Group_Members(group_id, method)
+    - Input Arguments: group_id (int), method (str: "str" or "list")
+    - Output: Returns usernames as string or list depending on method parameter
+    - Functionality: Queries group, returns empty list if not found, splits usernames
+      by pipe, filters empty strings
+
+  ● Remove_From_Group(group_id, target_username)
+    - Input Arguments: group_id (int), target_username (str)
+    - Output: Returns (boolean success, string message)
+    - Functionality: Gets current members, removes target, updates database with lock
+
+  ● Add_To_Group(group_id, target_username)
+    - Input Arguments: group_id (int), target_username (str)
+    - Output: Returns (boolean success, string message)
+    - Functionality: Gets current members, appends target, updates database with lock
+
+  ● Get_Current_Group_Id()
+    - Input Arguments: None
+    - Output: Returns integer count of groups (next group ID)
+    - Functionality: Counts rows in groups table
+
+  ● Give_Add_Group_Message_To_Added(group_id, group_name)
+    - Input Arguments: group_id (int), group_name (str)
+    - Output: Returns formatted announcement string
+    - Functionality: Constructs message notifying user of group addition
+
+  ● Give_Remove_Group_Message_To_Removed(group_id, group_name)
+    - Input Arguments: group_id (int), group_name (str)
+    - Output: Returns formatted announcement string
+    - Functionality: Constructs message notifying user of group removal
+
+  ● Print_Group()
+    - Input Arguments: None
+    - Output: Prints groups table to console
+    - Functionality: Executes SELECT * on groups table
+
+  ● Save_Message(msg_type, msg_id, username_str, group_id, header, messagge)
+    - Input Arguments: msg_type (str: "str"/"wav"), msg_id (str), username_str (str),
+      group_id (int), header (bytes), messagge (bytes or path)
+    - Output: None
+    - Functionality: If audio, converts to WAV file; stores message in database with lock
+
+  ● Get_Message_by_msg_id(msg_id)
+    - Input Arguments: msg_id (str)
+    - Output: Returns tuple of message row or None
+    - Functionality: Queries messages table by msg_id primary key
+
+  ● Add_User_To_connect_Messages(msg_id, username_str)
+    - Input Arguments: msg_id (str), username_str (str)
+    - Output: None
+    - Functionality: Inserts record in connectmessages table marking message not yet
+      received by user (did_recv=False)
+
+  ● Add_Users_To_connect_Messages_by_Group(msg_id, group_id)
+    - Input Arguments: msg_id (str), group_id (int)
+    - Output: None
+    - Functionality: Gets all group members, calls Add_User_To_connect_Messages for
+      each to track delivery to all group members
+
+  ● Recv_Messages_Not_Sent_To_Client(username_str)
+    - Input Arguments: username_str (str)
+    - Output: Returns list of message tuples with audio converted back to bytes
+    - Functionality: Queries messages marked not received by user, retrieves audio
+      from files if needed, returns complete message list
+
+  ● Update_Connect_Message_Status(msg_id, username_str)
+    - Input Arguments: msg_id (str), username_str (str)
+    - Output: None
+    - Functionality: Updates connectmessages table marking message as received
+      (did_recv=True) for this user with thread lock
+
+  ● Print_messages()
+    - Input Arguments: None
+    - Output: Prints messages table to console
+    - Functionality: Executes SELECT * on messages table
+
+  ● print_connect_messages()
+    - Input Arguments: None
+    - Output: Prints connectmessages table to console
+    - Functionality: Executes SELECT * on connectmessages table
+
+================================================================================
+CLASS 6: DB_Class_Specific (DB_file.py)
+================================================================================
+
+Class Name (English): DB_Class_Specific
+
+▪ Class Role
+  The DB_Class_Specific class manages per-user database on client side, storing groups
+  the user is member of, messages received from each group, and audio files for this
+  specific user. Each user has their own database instance.
+
+▪ Class Attributes
+
+  ● username
+    - Role: Username this database instance belongs to
+    - Usage: Used to identify user-specific folders and database files
+
+  ● write_lock
+    - Role: Threading lock for write operations
+    - Usage: Ensures thread-safe database access for this user
+
+  ● file_path
+    - Role: Path to DB_file.py
+    - Usage: Base for calculating database location
+
+  ● folder_path
+    - Role: Parent directory containing databases
+    - Usage: Location for user-specific database and audio files
+
+  ● audio_dir
+    - Role: Path object pointing to audio_recordings_wav_{username}
+    - Usage: Directory where user's audio messages are stored locally
+
+  ● audio_dir_str
+    - Role: String version of audio_dir
+    - Usage: For file operations requiring string paths
+
+  ● specific_data_base
+    - Role: Path to specific_data_base_{username}.db
+    - Usage: User's personal database connection path
+
+  ● conn
+    - Role: SQLite connection object
+    - Usage: Database connection with 30-second timeout for user's database
+
+  ● c
+    - Role: SQLite cursor object
+    - Usage: Execute SQL queries on user's database
+
+▪ Class Operations
+
+  ● __init__(username)
+    - Input Arguments: username (str)
+    - Output: Initializes user-specific database
+    - Functionality: Creates/opens username-specific database file, establishes
+      connection with 30-second timeout, creates groups and messages tables specific
+      to this user
+
+  ● Save_audio_bytes_in_dir(bytes_array, msg_id)
+    - Input Arguments: bytes_array (list of bytes chunks), msg_id (str)
+    - Output: None
+    - Functionality: Concatenates audio chunks as numpy array, saves as WAV file
+      recording{msg_id}.wav in user's audio directory
+
+  ● Create_Group(group_id, usernames_str, group_name)
+    - Input Arguments: group_id (int), usernames_str (str - pipe-separated members),
+      group_name (str)
+    - Output: None
+    - Functionality: Inserts group into user's groups table with lock
+
+  ● Get_Group_Members(group_id, method)
+    - Input Arguments: group_id (int), method (str: "str" or "list")
+    - Output: Returns usernames as string or list
+    - Functionality: Queries user's groups table, returns members in requested format
+
+  ● Remove_From_Group(group_id, target_username)
+    - Input Arguments: group_id (int), target_username (str)
+    - Output: None (or deletes entire group if target is self)
+    - Functionality: If removing self, deletes entire group; otherwise updates
+      usernames_str without target user
+
+  ● Add_To_Group(group_id, target_username)
+    - Input Arguments: group_id (int), target_username (str)
+    - Output: None
+    - Functionality: Appends target_username to group's members list with lock
+
+  ● Get_Group_Name_From_Id(group_id)
+    - Input Arguments: group_id (int)
+    - Output: Returns group name string or None
+    - Functionality: Queries groups table for group_name by group_id
+
+  ● Get_Group_Id_From_Name(group_name)
+    - Input Arguments: group_name (str)
+    - Output: Returns group ID or None
+    - Functionality: Queries groups table for group_id by group_name
+
+  ● Is_Group_Exist(group_name)
+    - Input Arguments: group_name (str)
+    - Output: Returns boolean
+    - Functionality: Queries groups table, returns True if group with this name exists
+
+  ● Print_Group()
+    - Input Arguments: None
+    - Output: Prints all user's groups to console
+    - Functionality: SELECT * on groups table
+
+  ● Get_Groups()
+    - Input Arguments: None
+    - Output: Returns list of (group_id, group_name) tuples
+    - Functionality: Queries all groups for this user
+
+  ● Save_Message(msg_type, msg_id, username_str, group_id, messagge)
+    - Input Arguments: msg_type (str: "str"/"wav"), msg_id (str), username_str (str),
+      group_id (int), messagge (bytes or string)
+    - Output: None
+    - Functionality: If audio, saves to file; stores message in user's messages table
+      with thread lock
+
+  ● Get_Message_by_msg_id(msg_id)
+    - Input Arguments: msg_id (str)
+    - Output: Returns message tuple or None
+    - Functionality: Queries messages by msg_id
+
+  ● Get_Messages_by_group(group_id)
+    - Input Arguments: group_id (int)
+    - Output: Returns list of message tuples
+    - Functionality: Queries all messages in specific group
+
+================================================================================
+CLASS 7: Audio_player (audio_player.py)
+================================================================================
+
+Class Name (English): Audio_player
+
+▪ Class Role
+  The Audio_player class manages audio playback of voice messages using sounddevice
+  library. It ensures only one audio plays at a time using thread-safe locking.
+
+▪ Class Attributes
+
+  ● lock
+    - Role: Threading lock for audio operations
+    - Usage: Prevents race conditions between play and stop operations
+
+▪ Class Operations
+
+  ● __init__()
+    - Input Arguments: None
+    - Output: Initializes Audio_player with lock
+    - Functionality: Creates threading.Lock() for synchronization
+
+  ● Play_Audio_By_File(filename)
+    - Input Arguments: filename (str) - path to WAV file
+    - Output: None
+    - Functionality: Acquires lock, stops any current playback, reads WAV file as
+      float32, plays through sounddevice with original sample rate
+
+  ● stop()
+    - Input Arguments: None
+    - Output: None
+    - Functionality: Acquires lock, stops any currently playing audio
+
+================================================================================
+CLASS 8: Recorder (audio_recorder_Qthread.py)
+================================================================================
+
+Class Name (English): Recorder
+
+▪ Class Role
+  The Recorder class manages audio recording using sounddevice and emits the recorded
+  audio bytes as a PyQt signal when recording completes. It inherits from QObject
+  to support signal emission.
+
+▪ Class Attributes
+
+  ● finished_recording
+    - Role: PyQt signal emitted when recording completes
+    - Usage: Notifies GUI with recorded audio bytes
+    - Signal parameter: audio_bytes (bytes)
+
+  ● running
+    - Role: Boolean flag for recording state
+    - Usage: Indicates whether recording is currently active
+
+  ● recorded_frames
+    - Role: List of numpy arrays
+    - Usage: Accumulates audio chunks during recording
+
+  ● stream
+    - Role: sounddevice.InputStream object
+    - Usage: Audio input stream for recording
+
+  ● is_force_close
+    - Role: Boolean flag
+    - Usage: Tracks if forced close is in progress to prevent crashes
+
+  ● full_audio_stream_numpy
+    - Role: Numpy array of complete audio
+    - Usage: Stores concatenated audio for conversion to bytes
+
+▪ Class Operations
+
+  ● callback(indata, frames, time, status)
+    - Input Arguments: indata (numpy array - recorded audio chunk), frames (int),
+      time (object), status (object - error flag if any)
+    - Output: None
+    - Functionality: Called by InputStream callback; appends indata copy to
+      recorded_frames list; prints warning if status indicates error
+
+  ● Start_Recording()
+    - Input Arguments: None
+    - Output: None
+    - Functionality: Sets running flag, initializes empty recorded_frames list,
+      creates and starts InputStream with 44100Hz mono, enters loop sleeping until
+      running becomes False, then stops stream, concatenates frames to numpy array,
+      converts to bytes, emits finished_recording signal
+
+  ● End_Recording()
+    - Input Arguments: None
+    - Output: None
+    - Functionality: Sets running=False to signal Start_Recording loop to finish
+
+  ● Force_close()
+    - Input Arguments: None
+    - Output: None
+    - Functionality: If is_force_close flag is True, forcefully stops and closes
+      stream, sets is_force_close=False
+
+  ● __del__()
+    - Input Arguments: None
+    - Output: None
+    - Functionality: Destructor that safely stops and closes stream if it exists,
+      preventing resource leaks; uses getattr to avoid crashes if stream was never
+      created
+
+================================================================================
+CLASS 9: ClientWorker (client_gui.py)
+================================================================================
+
+Class Name (English): ClientWorker
+
+▪ Class Role
+  The ClientWorker class is a QThread worker that handles authentication
+  (login/signup) operations asynchronously, preventing GUI freezing during network
+  operations. It emits a signal upon completion with success status and message.
+
+▪ Class Attributes
+
+  ● sinup_singal (note: typo in original, should be "signup_signal")
+    - Role: PyQt signal emitted when authentication completes
+    - Usage: Notifies LoginWindow of success/failure
+    - Signal parameters: (success: bool, message: str)
+
+  ● client
+    - Role: Client object instance
+    - Usage: Reference to client for performing authentication
+
+  ● action
+    - Role: Authentication method string
+    - Usage: "sin" for login or "sup" for signup
+
+  ● username
+    - Role: Username for authentication
+    - Usage: Passed to client for login/signup
+
+  ● password
+    - Role: Password for authentication
+    - Usage: Passed to client for login/signup
+
+  ● already_connected
+    - Role: Boolean flag
+    - Usage: If True, skips server connection step (already connected)
+
+▪ Class Operations
+
+  ● __init__(client, action, username, password, already_connected)
+    - Input Arguments: client (Client object), action (str), username (str),
+      password (str), already_connected (bool)
+    - Output: Initializes ClientWorker thread
+    - Functionality: Stores all parameters, calls super().__init__()
+
+  ● run()
+    - Input Arguments: None
+    - Output: None
+    - Functionality: Thread entry point; if not already_connected, calls
+      client.Connect_To_Server(); calls client.Get_in_Server() with action/username/password;
+      checks response and emits sinup_singal with appropriate success/failure status;
+      catches exceptions and emits error message
+
+================================================================================
+CLASS 10: LoginWindow (client_gui.py)
+================================================================================
+
+Class Name (English): LoginWindow
+
+▪ Class Role
+  The LoginWindow class is the initial GUI window for user login and signup. It
+  validates user input, creates ClientWorker threads for async authentication, and
+  opens the ChatWindow upon successful login.
+
+▪ Class Attributes
+
+  ● client
+    - Role: Client object instance
+    - Usage: Shared client for authentication and later chat operations
+
+  ● client_connected
+    - Role: Boolean flag
+    - Usage: Tracks if client has connected to server yet
+
+  ● label_user
+    - Role: QLabel widget
+    - Usage: Display "שם משתמש:" (Username:) label
+
+  ● input_user
+    - Role: QLineEdit widget
+    - Usage: Username input field with placeholder
+
+  ● label_pass
+    - Role: QLabel widget
+    - Usage: Display "סיסמה:" (Password:) label
+
+  ● input_pass
+    - Role: QLineEdit widget
+    - Usage: Password input field, echo mode set to hide characters
+
+  ● btn_login
+    - Role: QPushButton widget
+    - Usage: Login button, triggers login action
+
+  ● btn_register
+    - Role: QPushButton widget
+    - Usage: Signup button, triggers signup action
+
+  ● worker
+    - Role: ClientWorker thread instance
+    - Usage: Runs authentication asynchronously
+
+  ● chat_win
+    - Role: ChatWindow instance
+    - Usage: Opened after successful authentication
+
+▪ Class Operations
+
+  ● __init__()
+    - Input Arguments: None
+    - Output: Initializes LoginWindow
+    - Functionality: Creates Client object, sets client_connected=False, calls init_ui()
+
+  ● init_ui()
+    - Input Arguments: None
+    - Output: None
+    - Functionality: Creates and arranges widgets (labels, input fields, buttons),
+      connects buttons to handle_Start_sinup, sets window title and fixed size
+
+  ● handle_Start_sinup(method)
+    - Input Arguments: method (str: "sin" for login or "sup" for signup)
+    - Output: None
+    - Functionality: Validates username/password (3-16 chars, alphanumeric only, no
+      Hebrew), disables buttons, creates ClientWorker thread with validated inputs,
+      connects worker's sinup_singal to on_finished, sets client_connected=True,
+      starts worker thread
+
+  ● on_finished(success, message)
+    - Input Arguments: success (bool), message (str)
+    - Output: None
+    - Functionality: Re-enables buttons; if successful, shows success message and
+      opens ChatWindow (if login); if failed, shows error message
+
+================================================================================
+CLASS 11: My_Error (client_logic.py)
+================================================================================
+
+Class Name (English): My_Error
+
+▪ Class Role
+  The My_Error class is a custom exception type for application-specific errors.
+  It inherits from Python's base Exception class and is used for raising and
+  catching domain-specific errors within the chat application.
+
+▪ Class Attributes
+  (No instance attributes; this is a simple exception class)
+
+▪ Class Operations
+
+  ● (Inherits from Exception - no custom operations defined)
+    - The class exists as a placeholder for future custom exception handling
+    - Can be raised and caught like any Python exception
+    - Usage example: raise My_Error("Custom error message")
+
+================================================================================
+END OF CLASS DOCUMENTATION
+================================================================================
+
+Note: This documentation covers the main classes in the Cyber Project VoxLink
+application. Some complex methods have partial signatures due to Hebrew comments
+and multi-threaded nature of the application. For complete method implementations,
+refer to the source code.
+
+Document Generated: 2026-06-03
+Application: Cyber Project VoxLink - Encrypted Chat with Voice Messages

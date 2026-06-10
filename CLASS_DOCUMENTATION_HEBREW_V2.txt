@@ -1,0 +1,922 @@
+================================================================================
+תיעוד מחלקות - Cyber Project VoxLink
+================================================================================
+
+================================================================================
+מחלקה 1: Cipher (cipher.py)
+================================================================================
+
+שם המחלקה: Cipher
+
+▪ תפקיד המחלקה
+  מחלקת Cipher טוענת בכל פעולות הצפנה/פענוח AES תוך שימוש ב-EAX mode,
+  וניהול חילופי מפתחות Diffie-Hellman לתקשורת מאובטחת בין client לשרת.
+  היא מספקת הצפנה ברמת ה-instance (עם מפתחות משותפים) וגם שיטות סטטיות
+  לחילופי מפתחות.
+
+▪ תכונות המחלקה
+  ● key
+    - שמור את מפתח ההצפנה הסימטרי
+    - משמש לשיטות aes_encrypt ו-aes_decrypt להצפנה/פענוח נתונים
+  
+  ● nonce
+    - שמור את ה-nonce עבור AES-EAX mode
+    - נדרש על ידי AES cipher כדי להבטיח ייחודיות בהצפנה
+
+▪ פעולות המחלקה
+
+  ● __init__(key, nonce)
+    - key, nonce
+    - אתחול אובייקט Cipher עם פרמטרי הצפנה
+    - קובע cipher עם ה-key ו-nonce המסופקים לפעולות הצפנה/פענוח
+
+  ● aes_encrypt(txt)
+    - txt - טקסט רגיל להצפנה
+    - החזר טקסט מוצפן
+    - מצפין בתים באמצעות AES-256 ב-EAX mode; יוצר אובייקט cipher חדש
+      לכל פעולה כדי להבטיח ביטחון
+
+  ● aes_decrypt(cipher_text)
+    - cipher_text - נתונים מוצפנים לפענוח
+    - החזר טקסט רגיל
+    - מפענח טקסט מוצפן באמצעות AES-256 ב-EAX mode עם ה-key ו-nonce
+      המאוחסנים
+
+  ● get_dh_public_key() [STATIC]
+    - אין
+    - החזר tuple
+    - יוצר זוג מפתחות Diffie-Hellman חדש באמצעות group 14 עם
+      חוזק מפתח 540-bit לחילופי מפתחות מאובטחים
+
+  ● get_dh_shared_key(dh_1, pk_2, lngth=32) [STATIC]
+    - dh_1, pk_2, lngth
+    - החזר shared secret key באורך המצוין
+    - חישוב shared secret מ-DH object שלו ו-public key של העמית,
+      החזרת רק ה-bytes הראשונים 'lngth'
+
+================================================================================
+מחלקה 2: HashPasswords (hashing.py)
+================================================================================
+
+שם המחלקה: HashPasswords
+
+▪ תפקיד המחלקה
+  מחלקת HashPasswords טוענת בגיבוב וזיהוי סיסמאות באמצעות PBKDF2
+  עם SHA-256 algorithm. היא מספקת אחסון סיסמאות מאובטח על ידי יצירת
+  מלחים אקראיים והשוואת גיבובים לאימות.
+
+▪ תכונות המחלקה
+  (למחלקה זו אין instance attributes; כל השיטות הן instance methods ללא
+   state persistence)
+
+▪ פעולות המחלקה
+
+  ● hash_new_password(password)
+    - password - סיסמה רגילה לגיבוב
+    - החזר tuple
+    - יוצר 16-byte salt אקראי וחישוב PBKDF2-HMAC-SHA256
+      עם 100,000 iterations; החזרת שניהם לאחסון ב-database
+
+  ● is_correct_password(salt, pw_hash, password)
+    - salt, pw_hash, password - סיסמה שסופקה על ידי המשתמש
+    - החזר נכון/לא נכון
+    - גיבוב הסיסמה המסופקת עם ה-salt השמור תוך שימוש באותו
+      algorithm ומספר iterations, ואחר כך משתמש בקבוצה בזמן קבוע
+      (hmac.compare_digest) כדי למנוע timing attacks
+
+================================================================================
+מחלקה 3: Client (client_logic.py)
+================================================================================
+
+שם המחלקה: Client
+
+▪ תפקיד המחלקה
+  מחלקת Client מייצגת משתמש מחובר ביישום ה-chat. היא יורשת מ-QThread
+  וטוענת בכל ה-client-side operations: חיבור לשרת, שליחה/קבלה של הודעות,
+  ניהול קבוצות, טיפול בהקלטות קול, ופליטת אותות ממשק משתמש.
+
+▪ תכונות המחלקה
+
+  ● new_message_signal
+    - PyQt signal לhודעות טקסט חדשות
+    - משדר כאשר השרת שולח הודעת טקסט חדשה לממשק הגרפי
+    - msg_id, username, message, group_id
+
+  ● new_audio_signal
+    - PyQt signal להודעות אודיו חדשות
+    - משדר כאשר השרת שולח הודעת אודיו חדשה לממשק הגרפי
+    - msg_id, username, file_path, group_id
+
+  ● new_in_group
+    - PyQt signal לנוטיפיקציית צטרפות לקבוצה
+    - משדר כאשר משתמש מצטרף או מתווסף לקבוצה
+    - group_name, group_id
+
+  ● new_add_group
+    - PyQt signal ליצירת קבוצה חדשה
+    - משדר כאשר קבוצה חדשה נוצרה בשרת
+    - group_id, users_string
+
+  ● new_remv_group
+    - PyQt signal להסרה מקבוצה
+    - משדר כאשר משתמש מוסר מקבוצה
+    - group_id, group_name
+
+  ● new_serversays_signal
+    - PyQt signal להכרזות שרת
+    - משדר כאשר השרת שולח הכרזות טקסט או הודעות סטטוס
+    - message
+
+  ● client_socket
+    - TCP socket connection לשרת
+    - טוען בכל התקשורת ברשת עם השרת
+
+  ● connected
+    - boolean flag למצב חיבור
+    - עוקב אם ה-client מחובר כרגע לשרת
+
+  ● cipher
+    - Cipher object instance להצפנה/פענוח
+    - מצפין נתונים יוצאים ומפענח נתונים נכנסים
+
+  ● username
+    - שם המשתמש המחובר כרגע
+    - מזהה את המשתמש בהודעות ופעולות קבוצה
+
+  ● password
+    - סיסמת המשתמש (אחסון זמני)
+    - משמש לאימות; לא מאוחסן בצורה קבע
+
+  ● socket_lock
+    - threading lock לגישת socket
+    - מונע race conditions כאשר threads רבים ניגשים ל-socket
+
+  ● message_queue
+    - Queue object להודעות יוצאות
+    - אחסון הודעות לשליחה לשרת; מעובדות על ידי Send_By_Queue thread
+
+  ● audio_data_dic
+    - dictionary אחסון הודעות אודיו חלקיות
+    - buffer קטעי אודיו עד שהודעה מלאה מורכבת
+
+  ● in_group
+    - current group ID שהמשתמש צופה בו/בו
+    - עוקב איזו קבוצה יש לשלוח הודעות אליה
+
+  ● default_group
+    - broadcast group ID
+    - קבוצת ברירת מחדל להודעות מערכת
+
+  ● DB_object_server_recvr
+    - database instance לאחסון הודעות שהתקבלו
+    - משמר הודעות שהתקבלו משרת
+
+  ● is_ack
+    - threading event לאות ACK
+    - מחכה ל-server ACK לפני שליחת הודעה הבאה
+
+▪ פעולות המחלקה
+
+  ● __init__()
+    - אין
+    - אתחול אובייקט Client
+    - קובע socket, קובע connected=False, קורא QThread.__init__()
+
+  ● initialize_parameters()
+    - אין
+    - אין
+    - אתחול כל threading locks, queues, dictionaries, ומשתני
+      group tracking; קרא לפני התחלת תקשורת
+
+  ● Connect_To_Server()
+    - אין
+    - אין
+    - מחבר socket לשרת (10.100.102.8:6666), מבצע DH key
+      exchange לקבלת shared encryption key, יוצר Cipher object
+
+  ● Get_in_Server(method, username, password)
+    - method, username, password
+    - החזר server response string
+    - בונה הודעת אימות מוצפנת, שולח לשרת, מקבל תגובה
+      מוצפנת, מפענח וחוזר אליה
+
+  ● Start_Client()
+    - אין
+    - אין
+    - אתחול parameters התחלת server logistics threads
+      (message receiving ו-queue-based sending)
+
+  ● format_msg_id(msg_id_str)
+    - msg_id_str - 18-digit timestamp ID משרת
+    - החזר formatted string
+    - המרת format timestamp של השרת ל-human-readable
+      date-time format; אימות input הוא 18 ספרות
+
+  ● Send_By_Queue()
+    - אין
+    - אין
+    - thread loop המשליך בעברית הודעות מ-message_queue,
+      שולח דרך socket עם thread-safe locking, מחכה ל-ACK signal עם timeout של 5 שניות
+
+  ● Server_Logistics()
+    - אין
+    - אין
+    - מיזם שני threads: recv_data_from_server_and_Handle (מקבל
+      ומעבד incoming messages) ו-Send_By_Queue (שולח queued messages)
+
+  ● recv_exact(nbytes)
+    - nbytes - מספר בתים לקבלה
+    - החזר bytes באורך בדיוק nbytes
+    - loops recv() קריאות עד לקבלת בדיוק nbytes; מעלה
+      ConnectionError אם socket נסגר מוקדם
+
+  ● recv_data_from_server_and_Handle()
+    - אין
+    - אין
+    - main receiving thread; מקבל בעברית header+payload משרת,
+      מפענח, פורץ, טוען סוגי הודעות שונים (טקסט, אודיו, group operations,
+      server announcements), משדר אותות מתאימים
+
+  ● Client_string_message(string_message, group_id)
+    - string_message, group_id
+    - החזר encrypted message bytes וmetadata
+    - בונה text message עם header, מצפין, מכין לשליחה
+
+  ● Send_Server_simple(msg_AES)
+    - msg_AES
+    - אין
+    - הוספת encrypted message לתור ל-Send_By_Queue לעיבוד
+
+  ● send_server_recording(voice_recording_bytes, group_id)
+    - voice_recording_bytes, group_id
+    - אין
+    - פיצול אודיו לקטעים בגודל CHUNK_DATA_MAX_SIZE, שליחה כל אחד
+      עם headers, מחיכה ל-ACK על כל קטע, retry ב-timeout
+
+  ● Create_Group_Send_Server_Msg(group_name, users_list)
+    - group_name, users_list
+    - אין
+    - יוצר message המבקש group creation בשרת, שולח לשרת;
+      יוצר group ב-database
+
+  ● Add_To_Group_Send_Server_Msg(message_raw, target_group)
+    - message_raw, target_group
+    - החזר status, message
+    - בונה ושולח message להוספת user לקבוצה; עדכן
+      local database ושלח לשרת
+
+  ● Remove_From_Group_Send_Server_Msg(message_raw, target_group)
+    - message_raw, target_group
+    - החזר status, message
+    - בונה ושולח message להסרת user מקבוצה; עדכן database
+
+  ● Handle_Server_Ans(response_string)
+    - response_string - server response לניתוח
+    - אין
+    - מנתח server responses ל-group operations (create, add, remove),
+      משדר אותות מתאימים ל-GUI updates
+
+================================================================================
+מחלקה 4: Server (server.py)
+================================================================================
+
+שם המחלקה: Server
+
+▪ תפקיד המחלקה
+  מחלקת Server היא ה-main server application החוקק את כל ה-connected clients,
+  טוען באימות, ניהול group messaging, שמירת הודעות, תיאום ההעברה של הודעות
+  בין clients באמצעות encryption ו-threading.
+
+▪ תכונות המחלקה
+
+  ● clients_currently_on
+    - counter ל-connected clients
+    - עוקב מספר active client connections לתיקיית/ניפוי
+
+  ● broadcast_id
+    - ID לsystem broadcast messages
+    - משמש ל-system-wide announcements
+
+  ● users_set
+    - set של currently connected usernames
+    - מונע duplicate logins; עוקב מי online
+
+  ● client_dic
+    - dictionary מיפוי username → (Queue, Cipher)
+    - אחסון message queue וcypher לכל connected user
+
+  ● temp_recconect_dic
+    - dictionary לauxiliary אחסון הודעות במהלך reconnection
+    - buffer הודעות אם client מנותק ומתחבר מחדש
+
+  ● place_holder_key
+    - string קבוע למפתח dictionary placeholder
+    - ניהול state פנימי
+
+  ● group_id_counter
+    - counter ליצירת unique group IDs
+    - מבטיח כל group מקבל unique ID
+
+  ● sup_lock / client_dic_lock / temp_recconect_dic_lock / group_id_counter_lock / edit_group_lock / users_set_lock
+    - threading locks לthread-safe operations
+    - מונע race conditions על shared data structures
+
+▪ פעולות המחלקה
+
+  ● __init__()
+    - אין
+    - אתחול Server התחלת האזנה לחיבורים
+    - יוצר TCP socket, קושר ל-10.100.102.8:6666, יוצר locks,
+      אתחול tracking dictionaries, נכנס ללולאה אינסופית המקבלת client connections
+
+  ● recv_exact(sock, nbytes)
+    - sock, nbytes - bytes לקבלה
+    - החזר bytes באורך בדיוק nbytes
+    - loops recv() עד לקבלת בדיוק nbytes; מעלה ConnectionError
+      אם connection נסגר מוקדם
+
+  ● Send_Client_By_Q(queue, socket, socket_lock, ack_evnt)
+    - queue, socket, socket_lock, ack_evnt
+    - אין
+    - thread function המשליך בעברית הודעות מqueue, שולח
+      דרך socket עם thread-safe locking, מחכה ל-ACK event
+
+  ● Single_Client_With_Thread(client_socket, address)
+    - client_socket, address
+    - אין
+    - thread function טיפול בindividual client connection; מבצע
+      DH key exchange, טוען באימות (login/signup), ניהול message receiving
+      ושליחה, טיפול בgroup operations
+
+================================================================================
+מחלקה 5: DB_Class_General (DB_file.py)
+================================================================================
+
+שם המחלקה: DB_Class_General
+
+▪ תפקיד המחלקה
+  מחלקת DB_Class_General טוענת ב-global database בצד השרת, אחסון user
+  credentials עם salted password hashes, group information, message history
+  לכל המשתמשים, ועקוב סטטוס ההעברה של הודעות. היא משתמשת ב-SQLite עם
+  WAL mode לגישה concurrent.
+
+▪ תכונות המחלקה
+
+  ● write_lock (CLASS VARIABLE)
+    - threading lock לdatabase write operations
+    - מבטיח thread-safe concurrent database access בכל ה-instances
+
+  ● file_path
+    - path למיקום קובץ Python זה
+    - בסיס לחישוב database file location
+
+  ● folder_path
+    - parent directory של קובץ זה
+    - מיקום אחסון database וaudio files
+
+  ● audio_dir
+    - path object המצביע על audio_recordings_wav folder
+    - directory אחסון audio message files
+
+  ● audio_dir_str
+    - string version של audio_dir path
+    - משמש לfile operations הדורשים string paths
+
+  ● general_data_base
+    - path לקובץ general_data_base.db
+    - main database connection path
+
+  ● conn
+    - SQLite connection object
+    - main database connection עם WAL journal mode
+
+  ● c
+    - SQLite cursor object
+    - ביצוע SQL queries וביצוע התוצאות
+
+▪ פעולות המחלקה
+
+  ● __init__()
+    - אין
+    - אתחול database connection ויצירת required tables
+    - אתור database file, קבלת connection עם WAL mode,
+      יצירת tables: users (username, password, salt), messages (type, msg_id,
+      username_str, group_id, header, content), connectmessages (delivery tracking),
+      groups (group_id, usernames_str)
+
+  ● save_user_and_pass(username, password)
+    - username, password
+    - אין
+    - משתמש ב-HashPasswords ליצירת salt וhash, אחסון user עם
+      thread lock לconcurrency safety
+
+  ● username_exist(username)
+    - username
+    - החזר נכון/לא נכון
+    - שאילתה users table, איטרציה תוצאות למציאת matching username
+
+  ● check_password(username, password)
+    - username, password
+    - החזר password נכון/לא נכון
+    - אחזור stored hash וsalt ל-username, שימוש ב-HashPasswords
+      לאימות provided password כנגד stored hash
+
+  ● print_table(table_name)
+    - table_name
+    - הדפסת table contents לקונסול
+    - ביצוע SELECT * query והדפסה כל rows
+
+  ● Save_audio_bytes_in_dir(bytes_array, msg_id)
+    - bytes_array, msg_id
+    - אין
+    - המרת byte chunks למערך numpy float32, שרשור,
+      שמירה כקובץ WAV ב-audio_dir עם שם recording{msg_id}.wav
+
+  ● Get_voice_message_by_file(filename)
+    - filename - path לקובץ WAV
+    - החזר bytes של audio data
+    - קריאת WAV file כ-float32, המרה לraw bytes
+
+  ● Create_Group(group_id, usernames_str)
+    - group_id, usernames_str
+    - החזר הצלחה/כישלון והודעה
+    - אימות כל usernames קיימים, הוספת group לtable groups
+      עם thread lock
+
+  ● Get_Group_Members(group_id, method)
+    - group_id, method
+    - החזר usernames כ-string או list בהתאם לparameter method
+    - שאילתה group, החזר empty list אם לא נמצא, פיצול usernames
+      לפי pipe, סינון empty strings
+
+  ● Remove_From_Group(group_id, target_username)
+    - group_id, target_username
+    - החזר הצלחה/כישלון והודעה
+    - קבלת current members, הסרת target, עדכון database עם lock
+
+  ● Add_To_Group(group_id, target_username)
+    - group_id, target_username
+    - החזר הצלחה/כישלון והודעה
+    - קבלת current members, הוספת target, עדכון database עם lock
+
+  ● Get_Current_Group_Id()
+    - אין
+    - החזר מספר קבוצות
+    - ספירת rows בtable groups
+
+  ● Give_Add_Group_Message_To_Added(group_id, group_name)
+    - group_id, group_name
+    - החזר formatted announcement string
+    - בונה message יודיע למשתמש בgroup addition
+
+  ● Give_Remove_Group_Message_To_Removed(group_id, group_name)
+    - group_id, group_name
+    - החזר formatted announcement string
+    - בונה message יודיע למשתמש בgroup removal
+
+  ● Print_Group()
+    - אין
+    - הדפסת groups table לקונסול
+    - ביצוע SELECT * בtable groups
+
+  ● Save_Message(msg_type, msg_id, username_str, group_id, header, messagge)
+    - msg_type, msg_id, username_str, group_id, header, messagge
+    - אין
+    - אם audio, המרה לקובץ WAV; אחסון message ב-database עם lock
+
+  ● Get_Message_by_msg_id(msg_id)
+    - msg_id
+    - החזר message row או None
+    - שאילתה messages table לפי msg_id primary key
+
+  ● Add_User_To_connect_Messages(msg_id, username_str)
+    - msg_id, username_str
+    - אין
+    - הוספת record בtable connectmessages סימון message עדיין לא
+      התקבל על ידי user (did_recv=False)
+
+  ● Add_Users_To_connect_Messages_by_Group(msg_id, group_id)
+    - msg_id, group_id
+    - אין
+    - קבלת כל group members, קריאה Add_User_To_connect_Messages
+      לכל אחד לעקוב delivery לכל group members
+
+  ● Recv_Messages_Not_Sent_To_Client(username_str)
+    - username_str
+    - החזר רשימה של message tuples עם audio conversion בחזרה לbytes
+    - שאילתה messages סימון לא התקבלו על ידי user, אחזור audio
+      מקבצים אם נדרש, החזרת complete message list
+
+  ● Update_Connect_Message_Status(msg_id, username_str)
+    - msg_id, username_str
+    - אין
+    - עדכון table connectmessages סימון message כ-received
+      (did_recv=True) לuser זה עם thread lock
+
+  ● Print_messages()
+    - אין
+    - הדפסת messages table לקונסול
+    - ביצוע SELECT * בtable messages
+
+  ● print_connect_messages()
+    - אין
+    - הדפסת connectmessages table לקונסול
+    - ביצוע SELECT * בtable connectmessages
+
+================================================================================
+מחלקה 6: DB_Class_Specific (DB_file.py)
+================================================================================
+
+שם המחלקה: DB_Class_Specific
+
+▪ תפקיד המחלקה
+  מחלקת DB_Class_Specific טוענת בper-user database בצד ה-client, אחסון groups
+  שהמשתמש חבר בהם, הודעות שהתקבלו מכל group, וaudio files לuser ספציפי זה.
+  לכל user יש DB_Class_Specific instance משלו.
+
+▪ תכונות המחלקה
+
+  ● username
+    - username שה-DB_Class_Specific instance שייך אליו
+    - משמש לזיהוי user-specific folders וdatabase files
+
+  ● write_lock
+    - threading lock לwrite operations
+    - מבטיח thread-safe database access לuser זה
+
+  ● file_path
+    - path ל-DB_file.py
+    - בסיס לחישוב database location
+
+  ● folder_path
+    - parent directory המכיל databases
+    - מיקום ל-user-specific database וaudio files
+
+  ● audio_dir
+    - path object המצביע על audio_recordings_wav_{username}
+    - directory אחסון user audio messages
+
+  ● audio_dir_str
+    - string version של audio_dir
+    - לfile operations הדורשים string paths
+
+  ● specific_data_base
+    - path ל-specific_data_base_{username}.db
+    - user personal database connection path
+
+  ● conn
+    - SQLite connection object
+    - database connection עם 30-second timeout ל-user database
+
+  ● c
+    - SQLite cursor object
+    - ביצוע SQL queries בuser database
+
+▪ פעולות המחלקה
+
+  ● __init__(username)
+    - username
+    - אתחול user-specific database
+    - יצירה/פתיחה username-specific database file, קבלת
+      connection עם 30-second timeout, יצירת groups וmessages tables ספציפיים
+      לuser זה
+
+  ● Save_audio_bytes_in_dir(bytes_array, msg_id)
+    - bytes_array, msg_id
+    - אין
+    - שרשור audio chunks כמערך numpy, שמירה כקובץ WAV
+      recording{msg_id}.wav בuser audio directory
+
+  ● Create_Group(group_id, usernames_str, group_name)
+    - group_id, usernames_str, group_name
+    - אין
+    - הוספת group לuser groups table עם lock
+
+  ● Get_Group_Members(group_id, method)
+    - group_id, method
+    - החזר usernames כ-string או list
+    - שאילתה user groups table, החזרת members בrequested format
+
+  ● Remove_From_Group(group_id, target_username)
+    - group_id, target_username
+    - אין (או מחיקת entire group אם target הוא self)
+    - אם הסרת self, מחיקת entire group; אחרת עדכון
+      usernames_str ללא target user
+
+  ● Add_To_Group(group_id, target_username)
+    - group_id, target_username
+    - אין
+    - הוספת target_username לgroup members list עם lock
+
+  ● Get_Group_Name_From_Id(group_id)
+    - group_id
+    - החזר group name string או None
+    - שאילתה groups table לgroup_name לפי group_id
+
+  ● Get_Group_Id_From_Name(group_name)
+    - group_name
+    - החזר group ID או None
+    - שאילתה groups table לgroup_id לפי group_name
+
+  ● Is_Group_Exist(group_name)
+    - group_name
+    - החזר boolean
+    - שאילתה groups table, החזרת True אם group עם שם זה קיים
+
+  ● Print_Group()
+    - אין
+    - הדפסת כל user groups לקונסול
+    - SELECT * בtable groups
+
+  ● Get_Groups()
+    - אין
+    - החזר רשימה של (group_id, group_name) tuples
+    - שאילתה כל groups לuser זה
+
+  ● Save_Message(msg_type, msg_id, username_str, group_id, messagge)
+    - msg_type, msg_id, username_str, group_id, messagge
+    - אין
+    - אם audio, שמירה לקובץ; אחסון message בuser messages table
+      עם thread lock
+
+  ● Get_Message_by_msg_id(msg_id)
+    - msg_id
+    - החזר message tuple או None
+    - שאילתה messages לפי msg_id
+
+  ● Get_Messages_by_group(group_id)
+    - group_id
+    - החזר רשימה של message tuples
+    - שאילתה כל messages בspecific group
+
+================================================================================
+מחלקה 7: Audio_player (audio_player.py)
+================================================================================
+
+שם המחלקה: Audio_player
+
+▪ תפקיד המחלקה
+  מחלקת Audio_player טוענת בהגברת אודיו של voice messages באמצעות
+  sounddevice library. היא מוודאת רק אודיו אחד משתדר בכל פעם באמצעות
+  thread-safe locking.
+
+▪ תכונות המחלקה
+
+  ● lock
+    - threading lock לaudio operations
+    - מונע race conditions בין play וstop operations
+
+▪ פעולות המחלקה
+
+  ● __init__()
+    - אין
+    - אתחול Audio_player עם lock
+    - יצירת threading.Lock() לsynchronization
+
+  ● Play_Audio_By_File(filename)
+    - filename
+    - אין
+    - קבלת lock, עצירת כל playback נוכחי, קריאת WAV file כ-float32,
+      משדור דרך sounddevice עם original sample rate
+
+  ● stop()
+    - אין
+    - אין
+    - קבלת lock, עצירת כל audio משודר כרגע
+
+================================================================================
+מחלקה 8: Recorder (audio_recorder_Qthread.py)
+================================================================================
+
+שם המחלקה: Recorder
+
+▪ תפקיד המחלקה
+  מחלקת Recorder טוענת בהקלטת אודיו באמצעות sounddevice ומשדרת את ה-recorded
+  audio bytes כ-PyQt signal כאשר ההקלטה מתגמרת. היא יורשת מ-QObject ל-support
+  signal emission.
+
+▪ תכונות המחלקה
+
+  ● finished_recording
+    - PyQt signal משודר כאשר ההקלטה מתגמרת
+    - יודיע לGUI עם recorded audio bytes
+    - פרמטר signal: audio_bytes
+
+  ● running
+    - boolean flag למצב הקלטה
+    - מציין אם הקלטה פעילה כרגע
+
+  ● recorded_frames
+    - רשימה של numpy arrays
+    - צובר audio chunks במהלך הקלטה
+
+  ● stream
+    - sounddevice.InputStream object
+    - audio input stream להקלטה
+
+  ● is_force_close
+    - boolean flag
+    - עוקב אם forced close בתהליך למנוע crashes
+
+  ● full_audio_stream_numpy
+    - numpy array של complete audio
+    - אחסון concatenated audio להמרה לbytes
+
+▪ פעולות המחלקה
+
+  ● callback(indata, frames, time, status)
+    - indata, frames, time, status
+    - אין
+    - קרא על ידי InputStream callback; הוספת indata copy ל-recorded_frames
+      list; הדפסת warning אם status מציין error
+
+  ● Start_Recording()
+    - אין
+    - אין
+    - קביעת running flag, אתחול empty recorded_frames list,
+      יצירה והתחלת InputStream עם 44100Hz mono, כניסה ללולאה ישן עד running
+      הופך False, לאחר מכן עצירת stream, שרשור frames למערך numpy,
+      המרה לbytes, משדור finished_recording signal
+
+  ● End_Recording()
+    - אין
+    - אין
+    - קביעת running=False לאות ל-Start_Recording loop להסתיים
+
+  ● Force_close()
+    - אין
+    - אין
+    - אם is_force_close flag הוא True, עצירה בכפייה וסגירת
+      stream, קביעת is_force_close=False
+
+  ● __del__()
+    - אין
+    - אין
+    - Destructor בטוח עצירה וסגירת stream אם קיים,
+      מונע resource leaks; שימוש ב-getattr להימנע crashes אם stream לא נוצר
+
+================================================================================
+מחלקה 9: ClientWorker (client_gui.py)
+================================================================================
+
+שם המחלקה: ClientWorker
+
+▪ תפקיד המחלקה
+  מחלקת ClientWorker היא QThread worker טוענת בauthentication operations
+  (login/signup) באופן asynchronous, מונע GUI freezing במהלך network operations.
+  היא משדרת signal בעת סיום עם success status והודעה.
+
+▪ תכונות המחלקה
+
+  ● sinup_singal (הערה: typo במקור, צריך להיות "signup_signal")
+    - PyQt signal משודר כאשר authentication מתגמר
+    - יודיע ל-LoginWindow של הצלחה/כישלון
+    - פרמטרי signal: success, message
+
+  ● client
+    - Client object instance
+    - התייחסות לclient לביצוע authentication
+
+  ● action
+    - authentication method string
+    - "sin" לכניסה או "sup" להרשמה
+
+  ● username
+    - username לauthentication
+    - בעבור client לכניסה/הרשמה
+
+  ● password
+    - password לauthentication
+    - בעבור client לכניסה/הרשמה
+
+  ● already_connected
+    - boolean flag
+    - אם True, דלג על server connection step (כבר connected)
+
+▪ פעולות המחלקה
+
+  ● __init__(client, action, username, password, already_connected)
+    - client, action, username, password, already_connected
+    - אתחול ClientWorker thread
+    - אחסון כל parameters, קריאה ל-super().__init__()
+
+  ● run()
+    - אין
+    - אין
+    - thread entry point; אם לא already_connected, קריאה
+      ל-client.Connect_To_Server(); קריאה ל-client.Get_in_Server() עם action/username/password;
+      בדיקת response משדור sinup_singal עם appropriate success/failure status;
+      catching exceptions משדור error message
+
+================================================================================
+מחלקה 10: LoginWindow (client_gui.py)
+================================================================================
+
+שם המחלקה: LoginWindow
+
+▪ תפקיד המחלקה
+  מחלקת LoginWindow היא ה-initial GUI window לuser login וsignup. היא
+  אימות user input, יוצרת ClientWorker threads לasync authentication, ופותחת
+  את ה-ChatWindow בעת successful login.
+
+▪ תכונות המחלקה
+
+  ● client
+    - Client object instance
+    - shared client לauthentication ולchat operations מאוחר יותר
+
+  ● client_connected
+    - boolean flag
+    - עוקב אם client התחבר לשרת כרגע
+
+  ● label_user
+    - QLabel widget
+    - הצגת תווית "שם משתמש:"
+
+  ● input_user
+    - QLineEdit widget
+    - username input field עם placeholder
+
+  ● label_pass
+    - QLabel widget
+    - הצגת תווית "סיסמה:"
+
+  ● input_pass
+    - QLineEdit widget
+    - password input field, echo mode קבוע להסתרה
+
+  ● btn_login
+    - QPushButton widget
+    - login button, הדלקת login action
+
+  ● btn_register
+    - QPushButton widget
+    - signup button, הדלקת signup action
+
+  ● worker
+    - ClientWorker thread instance
+    - הרצת authentication asynchronously
+
+  ● chat_win
+    - ChatWindow instance
+    - נפתח בעת successful authentication
+
+▪ פעולות המחלקה
+
+  ● __init__()
+    - אין
+    - אתחול LoginWindow
+    - יצירת Client object, קביעת client_connected=False, קריאה init_ui()
+
+  ● init_ui()
+    - אין
+    - אין
+    - יצירה וסידור widgets (labels, input fields, buttons),
+      חיבור buttons ל-handle_Start_sinup, קביעת window title וfixed size
+
+  ● handle_Start_sinup(method)
+    - method
+    - אין
+    - אימות username/password (3-16 chars, alphanumeric בלבד, אין Hebrew),
+      deactivate buttons, יצירת ClientWorker thread עם validated inputs,
+      חיבור worker's sinup_singal ל-on_finished, קביעת client_connected=True,
+      התחלת worker thread
+
+  ● on_finished(success, message)
+    - success, message
+    - אין
+    - Re-enable buttons; אם successful, הצגת success message
+      ופתיחת ChatWindow (אם login); אם failed, הצגת error message
+
+================================================================================
+מחלקה 11: My_Error (client_logic.py)
+================================================================================
+
+שם המחלקה: My_Error
+
+▪ תפקיד המחלקה
+  מחלקת My_Error היא custom exception type לapp-specific errors.
+  היא יורשת מ-Python base Exception class משמשת raising וcatching של
+  domain-specific errors בתוך ה-chat application.
+
+▪ תכונות המחלקה
+  (אין instance attributes; זו simple exception class)
+
+▪ פעולות המחלקה
+
+  ● (יורשת מ-Exception - אין custom operations מוגדרות)
+    - המחלקה קיימת כ-placeholder לfuture custom exception handling
+    - ניתן raising וcatching כמו כל Python exception
+    - דוגמת שימוש: raise My_Error("Custom error message")
+
+================================================================================
+סיום תיעוד מחלקות
+================================================================================
+
+הערה: תיעוד זה מכסה את ה-main classes ביישום Cyber Project VoxLink.
+לחלק מה-complex methods יש partial signatures בגלל Hebrew comments
+וטבע ה-multi-threaded של היישום. לcomplete method implementations,
+עיין בsource code.
+
+Document Generated: 2026-06-03
+Application: Cyber Project VoxLink - Encrypted Chat with Voice Messages

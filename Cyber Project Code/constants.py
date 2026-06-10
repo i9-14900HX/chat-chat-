@@ -5,7 +5,7 @@ NONCE = b"Encryption is the process of transforming information into a form that
 
 #header:
 HEADER_FORMAT = "!B 18s I I H 16s H"
-HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
+HEADER_SIZE = struct.calcsize(HEADER_FORMAT) #47
 USERNAME_SIZE = 16
 
 STR = 1
@@ -21,7 +21,4 @@ RMV = 10
 
 #protocol
 CHUNK_MAX_SIZE = 1027
-CHUNK_DATA_MAX_SIZE = CHUNK_MAX_SIZE - HEADER_SIZE
-
-#six seven
-SIX_SEVEN = 67
+CHUNK_DATA_MAX_SIZE = CHUNK_MAX_SIZE - HEADER_SIZE #980 
